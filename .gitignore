@@ -1,0 +1,39 @@
+# Build output
+/dist/
+/node_modules/
+/src-tauri/target/
+
+# Local release artifacts (built binaries, copied runtime DLLs)
+/Syntax-Uninstaller.exe
+/WebView2Loader.dll
+*.msi
+*.msix
+*.nsis.zip
+*.sig
+
+# Runtime logs and benchmark dumps
+*.log
+*-baseline.txt
+/tauri_stdout.log
+/tauri_stderr.log
+/app.log
+
+# Crash dumps / debug symbols
+*.dmp
+*.pdb
+
+# Environment and editor files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local SQLite databases / backups
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
