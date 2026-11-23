@@ -128,6 +128,13 @@ pub fn run() {
             commands::window_close,
             commands::window_is_maximized,
             commands::download_and_install_update,
+            commands::start_live_monitor,
+            commands::get_live_monitor_status,
+            commands::stop_live_monitor,
+            commands::get_installation_traces,
+            commands::delete_installation_trace,
+            commands::revert_installation_trace,
+            commands::get_database_footprints,
         ])
         .build(tauri::generate_context!()) {
             Ok(app) => app,

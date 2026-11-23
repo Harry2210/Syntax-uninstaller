@@ -867,6 +867,65 @@ export const api = {
     }
   },
 
+  async startLiveMonitor(installerPath: string | null, appName: string): Promise<any> {
+    try {
+      return await invokeTauri<any>('start_live_monitor', { installerPath, appName });
+    } catch (err) {
+      console.error('startLiveMonitor error:', err);
+      throw err;
+    }
+  },
+
+  async getLiveMonitorStatus(): Promise<any> {
+    try {
+      return await invokeTauri<any>('get_live_monitor_status');
+    } catch {
+      return { is_active: false, app_name: '', elapsed_seconds: 0, recent_events: [] };
+    }
+  },
+
+  async stopLiveMonitor(appName: string): Promise<InstallationTrace> {
+    try {
+      return await invokeTauri<InstallationTrace>('stop_live_monitor', { appName });
+    } catch (err) {
+      console.error('stopLiveMonitor error:', err);
+      throw err;
+    }
+  },
+
+  async getInstallationTraces(): Promise<InstallationTrace[]> {
+    try {
+      return await invokeTauri<InstallationTrace[]>('get_installation_traces');
+    } catch {
+      return [];
+    }
+  },
+
+  async deleteInstallationTrace(id: string): Promise<void> {
+    try {
+      await invokeTauri<void>('delete_installation_trace', { id });
+    } catch (err) {
+      console.error('deleteInstallationTrace error:', err);
+    }
+  },
+
+  async revertInstallationTrace(trace: InstallationTrace): Promise<[number, number]> {
+    try {
+      return await invokeTauri<[number, number]>('revert_installation_trace', { trace });
+    } catch (err) {
+      console.error('revertInstallationTrace error:', err);
+      throw err;
+    }
+  },
+
+  async getDatabaseFootprints(): Promise<any[]> {
+    try {
+      return await invokeTauri<any[]>('get_database_footprints');
+    } catch {
+      return [];
+    }
+  },
+
   async getApplicationIcon(iconPath: string): Promise<string | null> {
     if (!iconPath) return null;
     if (iconPath.startsWith('data:image/') || iconPath.startsWith('http')) {

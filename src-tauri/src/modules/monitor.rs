@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Mutex;
 use winreg::enums::*;
 use winreg::RegKey;
 
@@ -22,6 +23,235 @@ pub struct InstallationTrace {
     pub new_files: Vec<String>,
     pub total_size_bytes: u64,
 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LiveMonitorStatus {
+    pub is_active: bool,
+    pub app_name: String,
+    pub installer_path: Option<String>,
+    pub installer_pid: Option<u32>,
+    pub installer_running: bool,
+    pub elapsed_seconds: u64,
+    pub detected_registry_keys: usize,
+    pub detected_files: usize,
+    pub recent_events: Vec<String>,
+}
+
+struct ActiveSession {
+    app_name: String,
+    installer_path: Option<String>,
+    installer_child: Option<std::process::Child>,
+    start_time: std::time::Instant,
+    before_snapshot: SystemSnapshot,
+    recent_events: Vec<String>,
+}
+
+static ACTIVE_SESSION: Mutex<Option<ActiveSession>> = Mutex::new(None);
+
+pub fn start_live_session(installer_path: Option<String>, app_name: String) -> Result<LiveMonitorStatus, String> {
+    let mut lock = ACTIVE_SESSION.lock().map_err(|e| e.to_string())?;
+
+    let before = take_snapshot();
+    let mut events = Vec::new();
+    events.push(format!("[{}] Baseline system snapshot captured ({} registry keys, {} paths)", 
+        chrono::Local::now().format("%H:%M:%S"), 
+        before.registry_keys.len(), 
+        before.file_directories.len()
+    ));
+
+    let mut child = None;
+    let mut pid = None;
+
+    if let Some(ref path_str) = installer_path {
+        let p = Path::new(path_str);
+        if p.exists() {
+            events.push(format!("[{}] Launching installer: {}", chrono::Local::now().format("%H:%M:%S"), p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+            match std::process::Command::new(p).spawn() {
+                Ok(c) => {
+                    pid = Some(c.id());
+                    events.push(format!("[{}] Installer process active (PID: {})", chrono::Local::now().format("%H:%M:%S"), c.id()));
+                    child = Some(c);
+                }
+                Err(err) => {
+                    events.push(format!("[{}] Note: Could not spawn directly ({}). Watching system for external installer.", chrono::Local::now().format("%H:%M:%S"), err));
+                }
+            }
+        }
+    } else {
+        events.push(format!("[{}] Live real-time system watcher started for '{}'", chrono::Local::now().format("%H:%M:%S"), app_name));
+    }
+
+    let status = LiveMonitorStatus {
+        is_active: true,
+        app_name: app_name.clone(),
+        installer_path: installer_path.clone(),
+        installer_pid: pid,
+        installer_running: child.is_some(),
+        elapsed_seconds: 0,
+        detected_registry_keys: 0,
+        detected_files: 0,
+        recent_events: events.clone(),
+    };
+
+    *lock = Some(ActiveSession {
+        app_name,
+        installer_path,
+        installer_child: child,
+        start_time: std::time::Instant::now(),
+        before_snapshot: before,
+        recent_events: events,
+    });
+
+    Ok(status)
+}
+
+pub fn get_live_session_status() -> LiveMonitorStatus {
+    let mut lock = match ACTIVE_SESSION.lock() {
+        Ok(l) => l,
+        Err(_) => return LiveMonitorStatus::default(),
+    };
+
+    let session = match lock.as_mut() {
+        Some(s) => s,
+        None => return LiveMonitorStatus::default(),
+    };
+
+    let elapsed = session.start_time.elapsed().as_secs();
+    let mut running = false;
+    let mut pid = None;
+
+    if let Some(ref mut child) = session.installer_child {
+        pid = Some(child.id());
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                running = false;
+                if !session.recent_events.iter().any(|e| e.contains("Installer process exited")) {
+                    session.recent_events.push(format!(
+                        "[{}] Installer process exited (code: {:?}). Ready to finalize trace.",
+                        chrono::Local::now().format("%H:%M:%S"),
+                        status.code()
+                    ));
+                }
+            }
+            Ok(None) => {
+                running = true;
+            }
+            Err(_) => {
+                running = false;
+            }
+        }
+    }
+
+    LiveMonitorStatus {
+        is_active: true,
+        app_name: session.app_name.clone(),
+        installer_path: session.installer_path.clone(),
+        installer_pid: pid,
+        installer_running: running,
+        elapsed_seconds: elapsed,
+        detected_registry_keys: 0,
+        detected_files: 0,
+        recent_events: session.recent_events.clone(),
+    }
+}
+
+pub fn stop_live_session(app_name: String) -> Result<InstallationTrace, String> {
+    let mut lock = ACTIVE_SESSION.lock().map_err(|e| e.to_string())?;
+
+    let session = match lock.take() {
+        Some(s) => s,
+        None => return Err("No active monitoring session found to stop".to_string()),
+    };
+
+    let effective_name = if !app_name.trim().is_empty() {
+        app_name
+    } else {
+        session.app_name
+    };
+
+    let trace = compare_snapshots(&session.before_snapshot, &effective_name);
+
+    // Save automatically to SQLite Database
+    if let Err(err) = crate::modules::db::Database::global().save_installation_trace(&trace) {
+        eprintln!("Warning: failed to persist trace in SQLite: {}", err);
+    }
+
+    Ok(trace)
+}
+
+pub fn revert_trace(trace: &InstallationTrace) -> (usize, u64) {
+    let mut removed_count = 0;
+    let mut bytes_freed = 0;
+
+    // 1. Delete recorded files and directories (deepest first)
+    let mut files_sorted = trace.new_files.clone();
+    files_sorted.sort_by(|a, b| b.len().cmp(&a.len()));
+
+    for file_path in &files_sorted {
+        let p = Path::new(file_path);
+        if p.exists() && crate::modules::leftover_scanner::is_safe_to_touch(p) {
+            if p.is_file() {
+                let size = p.metadata().map(|m| m.len()).unwrap_or(0);
+                if std::fs::remove_file(p).is_ok() {
+                    removed_count += 1;
+                    bytes_freed += size;
+                }
+            } else if p.is_dir() {
+                if std::fs::remove_dir_all(p).is_ok() {
+                    removed_count += 1;
+                }
+            }
+        }
+    }
+
+    // 2. Delete recorded registry keys
+    for reg_key in &trace.new_registry_keys {
+        if reg_key.starts_with("Service:") {
+            let svc_name = reg_key.trim_start_matches("Service:");
+            if let Ok(services) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(
+                r"SYSTEM\CurrentControlSet\Services",
+                KEY_ALL_ACCESS,
+            ) {
+                if services.delete_subkey_all(svc_name).is_ok() {
+                    removed_count += 1;
+                }
+            }
+        } else if let Some((_hive_str, sub)) = reg_key.split_once(':') {
+            let (hive, prefix) = if sub.contains("Run") {
+                (HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run")
+            } else {
+                (HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run")
+            };
+            if let Ok(run_k) = RegKey::predef(hive).open_subkey_with_flags(prefix, KEY_ALL_ACCESS) {
+                if run_k.delete_value(sub).is_ok() {
+                    removed_count += 1;
+                }
+            }
+        } else if reg_key.contains('\\') {
+            // Full registry key path
+            let (hive, sub) = if reg_key.starts_with("HKCU\\") {
+                (HKEY_CURRENT_USER, reg_key.trim_start_matches("HKCU\\"))
+            } else if reg_key.starts_with("HKLM\\") {
+                (HKEY_LOCAL_MACHINE, reg_key.trim_start_matches("HKLM\\"))
+            } else {
+                (HKEY_CURRENT_USER, reg_key.as_str())
+            };
+            if let Some((parent, leaf)) = sub.rsplit_once('\\') {
+                if let Ok(pk) = RegKey::predef(hive).open_subkey_with_flags(parent, KEY_ALL_ACCESS) {
+                    if pk.delete_subkey_all(leaf).is_ok() {
+                        removed_count += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    // Remove from SQLite
+    crate::modules::db::Database::global().delete_installation_trace(&trace.id).ok();
+
+    (removed_count, bytes_freed)
+}
+
 
 pub fn take_snapshot() -> SystemSnapshot {
     let mut reg_keys = Vec::new();

@@ -75,8 +75,8 @@ export interface WindowsApp {
 export interface LeftoverItem {
   id: string;
   path: string;
-  item_type: 'RegistryKey' | 'RegistryValue' | 'Folder' | 'File';
-  scan_level: 'Safe' | 'Moderate' | 'Advanced';
+  item_type: 'RegistryKey' | 'RegistryValue' | 'Folder' | 'File' | 'Service';
+  scan_level: 'Safe' | 'Moderate' | 'Advanced' | 'Aggressive';
   confidence: number;
   size_bytes: number;
   reason: string;
@@ -189,6 +189,28 @@ export interface InstallationTrace {
   new_registry_keys: string[];
   new_files: string[];
   total_size_bytes: number;
+}
+
+export interface LiveMonitorStatus {
+  is_active: boolean;
+  app_name: string;
+  installer_path?: string;
+  installer_pid?: number;
+  installer_running: boolean;
+  elapsed_seconds: number;
+  detected_registry_keys: number;
+  detected_files: number;
+  recent_events: string[];
+}
+
+export interface KnownAppFootprint {
+  id: string;
+  app_name: string;
+  publisher: string;
+  known_keys: string[];
+  known_folders: string[];
+  silent_args: string;
+  confidence_rating: number;
 }
 
 export interface NotificationItem {

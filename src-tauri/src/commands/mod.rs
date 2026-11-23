@@ -304,6 +304,58 @@ pub async fn compare_monitor_snapshot(
 }
 
 #[tauri::command]
+pub async fn start_live_monitor(
+    installer_path: Option<String>,
+    app_name: String,
+) -> Result<monitor::LiveMonitorStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || monitor::start_live_session(installer_path, app_name))
+        .await
+        .map_err(|e| format!("Failed to spawn monitor: {}", e))?
+}
+
+#[tauri::command]
+pub async fn get_live_monitor_status() -> monitor::LiveMonitorStatus {
+    tauri::async_runtime::spawn_blocking(monitor::get_live_session_status)
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub async fn stop_live_monitor(app_name: String) -> Result<InstallationTrace, String> {
+    tauri::async_runtime::spawn_blocking(move || monitor::stop_live_session(app_name))
+        .await
+        .map_err(|e| format!("Failed to stop monitor: {}", e))?
+}
+
+#[tauri::command]
+pub async fn get_installation_traces() -> Result<Vec<InstallationTrace>, String> {
+    tauri::async_runtime::spawn_blocking(|| crate::modules::db::Database::global().get_installation_traces())
+        .await
+        .map_err(|e| format!("Database task failed: {}", e))?
+}
+
+#[tauri::command]
+pub async fn delete_installation_trace(id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || crate::modules::db::Database::global().delete_installation_trace(&id))
+        .await
+        .map_err(|e| format!("Database task failed: {}", e))?
+}
+
+#[tauri::command]
+pub async fn revert_installation_trace(trace: InstallationTrace) -> Result<(usize, u64), String> {
+    tauri::async_runtime::spawn_blocking(move || Ok(monitor::revert_trace(&trace)))
+        .await
+        .map_err(|e| format!("Revert task failed: {}", e))?
+}
+
+#[tauri::command]
+pub async fn get_database_footprints() -> Result<Vec<crate::modules::db::KnownAppFootprint>, String> {
+    tauri::async_runtime::spawn_blocking(|| crate::modules::db::Database::global().get_all_footprints())
+        .await
+        .map_err(|e| format!("Database task failed: {}", e))?
+}
+
+#[tauri::command]
 pub async fn get_application_icon(icon_path: String) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || icon_extractor::extract_icon_as_base64(&icon_path))
         .await

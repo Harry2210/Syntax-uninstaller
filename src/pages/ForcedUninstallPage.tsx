@@ -25,7 +25,7 @@ export const ForcedUninstallPage: React.FC<ForcedUninstallPageProps> = ({
 }) => {
   const [targetName, setTargetName] = useState('');
   const [targetPath, setTargetPath] = useState('');
-  const [scanLevel, setScanLevel] = useState<'Safe' | 'Moderate' | 'Advanced'>('Moderate');
+  const [scanLevel, setScanLevel] = useState<'Safe' | 'Moderate' | 'Advanced' | 'Aggressive'>('Moderate');
   const [isScanning, setIsScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const [findings, setFindings] = useState<LeftoverItem[]>([]);
@@ -137,9 +137,9 @@ export const ForcedUninstallPage: React.FC<ForcedUninstallPageProps> = ({
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
-          <div className="flex items-center space-x-3 text-xs">
+          <div className="flex items-center space-x-2 text-xs flex-wrap gap-y-1">
             <span className="text-text-muted font-medium">Scan Thoroughness:</span>
-            {(['Safe', 'Moderate', 'Advanced'] as const).map((level) => (
+            {(['Safe', 'Moderate', 'Advanced', 'Aggressive'] as const).map((level) => (
               <button
                 key={level}
                 type="button"
@@ -212,9 +212,21 @@ export const ForcedUninstallPage: React.FC<ForcedUninstallPageProps> = ({
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold font-mono text-text-primary truncate max-w-lg">
-                        {item.path}
-                      </span>
+                      <div className="flex items-center space-x-2 truncate max-w-lg">
+                        <span className="font-semibold font-mono text-text-primary truncate">
+                          {item.path}
+                        </span>
+                        {item.reason.includes('SQLite Database') && (
+                          <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold rounded uppercase tracking-wider">
+                            DB Verified
+                          </span>
+                        )}
+                        {item.scan_level === 'Aggressive' && (
+                          <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded uppercase tracking-wider">
+                            Aggressive
+                          </span>
+                        )}
+                      </div>
                       <StatusBadge status={item.item_type} variant={item.item_type === 'RegistryKey' ? 'info' : 'success'} />
                     </div>
                     <p className="text-[11px] text-text-secondary mt-1">{item.reason}</p>

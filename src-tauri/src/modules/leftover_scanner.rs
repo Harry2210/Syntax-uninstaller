@@ -53,6 +53,67 @@ pub fn scan_application_leftovers(
         || norm_pub.contains("apple")
         || norm_pub == "unknown publisher";
 
+    // 0. Query SQLite Software Footprint Signature Database
+    let footprints = crate::modules::db::Database::global().find_matching_footprints(app_name, publisher);
+    for fp in footprints {
+        for folder_pattern in &fp.known_folders {
+            let expanded = expand_env_vars(folder_pattern);
+            let p = Path::new(&expanded);
+            if p.exists() && is_safe_to_touch(p) {
+                let path_str = p.to_string_lossy().to_string();
+                if !seen_paths.contains(&path_str) {
+                    seen_paths.insert(path_str.clone());
+                    let size = if p.is_dir() { dir_size(p) } else { p.metadata().map(|m| m.len()).unwrap_or(0) };
+                    findings.push(LeftoverItem {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        path: path_str,
+                        item_type: if p.is_dir() { "Folder".into() } else { "File".into() },
+                        scan_level: "Safe".into(),
+                        confidence: 1.0,
+                        size_bytes: size,
+                        reason: format!("Verified footprint in SQLite Database ({})", fp.app_name),
+                        is_shared: false,
+                        eligible_for_deletion: true,
+                        selected: true,
+                    });
+                }
+            }
+        }
+
+        for key_pattern in &fp.known_keys {
+            let hives = [
+                (HKEY_CURRENT_USER, "HKCU"),
+                (HKEY_LOCAL_MACHINE, "HKLM"),
+                (HKEY_LOCAL_MACHINE, "HKLM (32-bit)"),
+            ];
+            for (hive, hive_name) in &hives {
+                let actual_sub = if *hive_name == "HKLM (32-bit)" {
+                    format!(r"SOFTWARE\WOW6432Node\{}", key_pattern)
+                } else {
+                    key_pattern.clone()
+                };
+                if let Ok(_) = RegKey::predef(*hive).open_subkey_with_flags(&actual_sub, KEY_READ) {
+                    let reg_path = format!(r"{}\{}", hive_name, actual_sub);
+                    if !seen_paths.contains(&reg_path) {
+                        seen_paths.insert(reg_path.clone());
+                        findings.push(LeftoverItem {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            path: reg_path,
+                            item_type: "RegistryKey".into(),
+                            scan_level: "Safe".into(),
+                            confidence: 1.0,
+                            size_bytes: 0,
+                            reason: format!("Verified registry footprint in SQLite Database ({})", fp.app_name),
+                            is_shared: false,
+                            eligible_for_deletion: true,
+                            selected: true,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     // 1. Dedicated Install Location (Safe, 1.0 confidence)
     if !install_location.trim().is_empty() {
         let p = Path::new(install_location.trim());
@@ -630,6 +691,76 @@ pub fn scan_application_leftovers(
         }
     }
 
+    // 13. Aggressive Forensic Sweep: COM CLSID, Shell Handlers, Driver Services
+    if scan_level == "Aggressive" || scan_level == "Forensic" || scan_level.is_empty() {
+        // A. Shell Context Menu Handlers (HKLM & HKCU)
+        let shell_roots = [
+            (HKEY_LOCAL_MACHINE, "HKLM", r"SOFTWARE\Classes\*\shellex\ContextMenuHandlers"),
+            (HKEY_LOCAL_MACHINE, "HKLM", r"SOFTWARE\Classes\Directory\shellex\ContextMenuHandlers"),
+            (HKEY_CURRENT_USER, "HKCU", r"Software\Classes\*\shellex\ContextMenuHandlers"),
+        ];
+
+        for (hive, hive_name, subpath) in &shell_roots {
+            if let Ok(shellex_key) = RegKey::predef(*hive).open_subkey_with_flags(subpath, KEY_READ) {
+                for handler_name in shellex_key.enum_keys().filter_map(|x| x.ok()) {
+                    let h_low = handler_name.to_lowercase();
+                    let matched = tokens.iter().any(|t| h_low.contains(&t.to_lowercase()));
+                    if matched {
+                        let reg_path = format!(r"{}\{}\{}", hive_name, subpath, handler_name);
+                        if !seen_paths.contains(&reg_path) {
+                            seen_paths.insert(reg_path.clone());
+                            findings.push(LeftoverItem {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                path: reg_path,
+                                item_type: "RegistryKey".into(),
+                                scan_level: "Aggressive".into(),
+                                confidence: 0.91,
+                                size_bytes: 0,
+                                reason: "Explorer Shell Context Menu Handler extension".into(),
+                                is_shared: false,
+                                eligible_for_deletion: true,
+                                selected: true,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // B. COM Class Registration (CLSID) InprocServer32 checking install location
+        if !install_location.trim().is_empty() {
+            let inst_low = install_location.to_lowercase();
+            if let Ok(clsid_key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(
+                r"Software\Classes\CLSID",
+                KEY_READ,
+            ) {
+                for clsid in clsid_key.enum_keys().filter_map(|x| x.ok()).take(200) {
+                    if let Ok(inproc) = clsid_key.open_subkey_with_flags(&format!(r"{}\InprocServer32", clsid), KEY_READ) {
+                        let path_val: String = inproc.get_value("").unwrap_or_default();
+                        if !path_val.is_empty() && path_val.to_lowercase().contains(&inst_low) {
+                            let reg_path = format!(r"HKCU\Software\Classes\CLSID\{}", clsid);
+                            if !seen_paths.contains(&reg_path) {
+                                seen_paths.insert(reg_path.clone());
+                                findings.push(LeftoverItem {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    path: reg_path,
+                                    item_type: "RegistryKey".into(),
+                                    scan_level: "Aggressive".into(),
+                                    confidence: 0.94,
+                                    size_bytes: 0,
+                                    reason: "Orphaned COM/ActiveX Class Object (CLSID)".into(),
+                                    is_shared: false,
+                                    eligible_for_deletion: true,
+                                    selected: true,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Filter by scan level if requested
     match scan_level {
         "Safe" => findings
@@ -640,8 +771,32 @@ pub fn scan_application_leftovers(
             .into_iter()
             .filter(|f| f.scan_level == "Safe" || f.scan_level == "Moderate")
             .collect(),
-        _ => findings, // Advanced returns Safe + Moderate + Advanced
+        "Advanced" => findings
+            .into_iter()
+            .filter(|f| f.scan_level == "Safe" || f.scan_level == "Moderate" || f.scan_level == "Advanced")
+            .collect(),
+        _ => findings, // "Aggressive" / "Forensic" returns all four tiers (Safe, Moderate, Advanced, Aggressive)
     }
+}
+
+fn expand_env_vars(raw: &str) -> String {
+    let mut out = raw.to_string();
+    let vars = [
+        ("APPDATA", std::env::var("APPDATA").unwrap_or_default()),
+        ("LOCALAPPDATA", std::env::var("LOCALAPPDATA").unwrap_or_default()),
+        ("PROGRAMFILES(X86)", std::env::var("ProgramFiles(x86)").unwrap_or_default()),
+        ("PROGRAMFILES", std::env::var("ProgramFiles").unwrap_or_default()),
+        ("PROGRAMDATA", std::env::var("ProgramData").unwrap_or_default()),
+        ("USERPROFILE", std::env::var("USERPROFILE").unwrap_or_default()),
+        ("WINDIR", std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string())),
+    ];
+
+    for (k, v) in &vars {
+        if !v.is_empty() {
+            out = out.replace(&format!("%{}%", k), v);
+        }
+    }
+    out
 }
 
 /// Tokenizer that derives clean, search-ready product identifiers
