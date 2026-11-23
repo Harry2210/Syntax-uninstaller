@@ -31,19 +31,13 @@ fn main() {
     let progress = |update: software_updater::UpdateProgress| {
         println!(
             "[progress {}/{}] {} | {} | {}",
-            update.index,
-            update.total,
-            update.name,
-            update.status,
-            update.message
+            update.index, update.total, update.name, update.status, update.message
         );
     };
 
     if args[0] == "--batch" {
-        let updates: Vec<SoftwareUpdate> = args[1..]
-            .iter()
-            .map(|id| make_update(id, None))
-            .collect();
+        let updates: Vec<SoftwareUpdate> =
+            args[1..].iter().map(|id| make_update(id, None)).collect();
         if updates.is_empty() {
             eprintln!("--batch needs at least one package id");
             std::process::exit(2);

@@ -30,8 +30,16 @@ pub fn get_last_bios_time() -> f64 {
 }
 
 /// Helper to check if a startup entry is enabled via Windows StartupApproved registry
-fn check_startup_approved(subpath: &str, value_name: &str, is_machine_scope: bool, default_val: bool) -> bool {
-    let full_path = format!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\{}", subpath);
+fn check_startup_approved(
+    subpath: &str,
+    value_name: &str,
+    is_machine_scope: bool,
+    default_val: bool,
+) -> bool {
+    let full_path = format!(
+        r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\{}",
+        subpath
+    );
 
     // If it's a machine item (HKLM or ProgramData), Task Manager prioritizes HKLM
     if is_machine_scope {
@@ -75,13 +83,23 @@ fn resolve_item_metadata(name: &str, cmd: &str, enabled: bool) -> (String, Strin
     let lower_name = name.to_lowercase();
     let lower_cmd = cmd.to_lowercase();
 
-    let (clean_name, publisher, base_impact) = if lower_name.contains("rtkaud") || lower_cmd.contains("rtkauduservice64") {
+    let (clean_name, publisher, base_impact) = if lower_name.contains("rtkaud")
+        || lower_cmd.contains("rtkauduservice64")
+    {
         ("RtkAudUService64".to_string(), "".to_string(), "Low")
     } else if lower_name.contains("securityhealth") || lower_cmd.contains("securityhealthsystray") {
         ("SecurityHealthSystray".to_string(), "".to_string(), "None")
-    } else if lower_name.contains("toolbox") || (lower_name.contains("wondershare") && lower_cmd.contains("pdftoolbox")) {
-        ("PDFelement Tray".to_string(), "Wondershare".to_string(), "None")
-    } else if lower_name.contains("screenshot") || (lower_name.contains("wondershare") && lower_cmd.contains("pecapturetool")) {
+    } else if lower_name.contains("toolbox")
+        || (lower_name.contains("wondershare") && lower_cmd.contains("pdftoolbox"))
+    {
+        (
+            "PDFelement Tray".to_string(),
+            "Wondershare".to_string(),
+            "None",
+        )
+    } else if lower_name.contains("screenshot")
+        || (lower_name.contains("wondershare") && lower_cmd.contains("pecapturetool"))
+    {
         ("PENotify".to_string(), "".to_string(), "None")
     } else if lower_name.contains("filmora") {
         ("FilmoraTray".to_string(), "".to_string(), "Not measured")
@@ -90,9 +108,17 @@ fn resolve_item_metadata(name: &str, cmd: &str, enabled: bool) -> (String, Strin
     } else if lower_name.contains("steam") || lower_cmd.contains("steam.exe") {
         ("Steam".to_string(), "".to_string(), "Not measured")
     } else if lower_name.contains("mumu") {
-        ("MuMuPlayerGlobal".to_string(), "Netease".to_string(), "High")
+        (
+            "MuMuPlayerGlobal".to_string(),
+            "Netease".to_string(),
+            "High",
+        )
     } else if lower_name.contains("edge") {
-        ("Microsoft Edge Auto Launch".to_string(), "Microsoft Corporation".to_string(), "Not measured")
+        (
+            "Microsoft Edge Auto Launch".to_string(),
+            "Microsoft Corporation".to_string(),
+            "Not measured",
+        )
     } else {
         (name.to_string(), "".to_string(), "Not measured")
     };
@@ -160,7 +186,7 @@ pub fn get_startup_entries() -> Vec<StartupItem> {
 fn scan_appx_startup_apps(list: &mut Vec<StartupItem>) {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let app_model_path = r"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData";
-    
+
     if let Ok(system_app_data) = hkcu.open_subkey_with_flags(app_model_path, KEY_READ) {
         for pkg_name in system_app_data.enum_keys().filter_map(|k| k.ok()) {
             let pkg_subkey_path = format!(r"{}\{}", app_model_path, pkg_name);
@@ -182,7 +208,11 @@ fn scan_appx_startup_apps(list: &mut Vec<StartupItem>) {
                                 (clean.to_string(), "Microsoft Corporation".to_string())
                             };
 
-                            let impact = if enabled { "Not measured".to_string() } else { "None".to_string() };
+                            let impact = if enabled {
+                                "Not measured".to_string()
+                            } else {
+                                "None".to_string()
+                            };
 
                             list.push(StartupItem {
                                 id: format!("AppX:{}:{}", pkg_name, task_name),
@@ -229,7 +259,12 @@ fn scan_reg_run(
             let (display_name, publisher, impact) = resolve_item_metadata(&name, &cmd, enabled);
 
             list.push(StartupItem {
-                id: format!("Reg:{}:{}:{}", if is_machine { "HKLM" } else { "HKCU" }, approved_subkey, name),
+                id: format!(
+                    "Reg:{}:{}:{}",
+                    if is_machine { "HKLM" } else { "HKCU" },
+                    approved_subkey,
+                    name
+                ),
                 name: display_name,
                 command: cmd,
                 location: loc_name.to_string(),
@@ -244,7 +279,13 @@ fn scan_reg_run(
     }
 }
 
-fn scan_folder(folder: &Path, loc_name: &str, scope: &str, is_machine: bool, list: &mut Vec<StartupItem>) {
+fn scan_folder(
+    folder: &Path,
+    loc_name: &str,
+    scope: &str,
+    is_machine: bool,
+    list: &mut Vec<StartupItem>,
+) {
     if !folder.exists() {
         return;
     }
@@ -275,10 +316,15 @@ fn scan_folder(folder: &Path, loc_name: &str, scope: &str, is_machine: bool, lis
                 }
 
                 let enabled = check_startup_approved("StartupFolder", &filename, is_machine, true);
-                let (display_name, publisher, impact) = resolve_item_metadata(&stem, &path.to_string_lossy(), enabled);
+                let (display_name, publisher, impact) =
+                    resolve_item_metadata(&stem, &path.to_string_lossy(), enabled);
 
                 list.push(StartupItem {
-                    id: format!("Folder:{}:{}", if is_machine { "HKLM" } else { "HKCU" }, filename),
+                    id: format!(
+                        "Folder:{}:{}",
+                        if is_machine { "HKLM" } else { "HKCU" },
+                        filename
+                    ),
                     name: display_name,
                     command: path.to_string_lossy().to_string(),
                     location: loc_name.to_string(),
@@ -338,7 +384,8 @@ pub fn toggle_startup_entry(id: &str, enabled: bool) -> Result<(), String> {
             (false, id.trim_start_matches("Folder:"))
         };
 
-        let approved_path = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder";
+        let approved_path =
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder";
 
         let mut hklm_written = false;
         if is_machine {

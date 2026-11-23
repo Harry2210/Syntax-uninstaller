@@ -7,15 +7,8 @@ use winreg::RegKey;
 
 #[link(name = "kernel32")]
 extern "system" {
-    fn MoveFileExW(
-        lpExistingFileName: *const u16,
-        lpNewFileName: *const u16,
-        dwFlags: u32,
-    ) -> i32;
-    fn SetFileAttributesW(
-        lpFileName: *const u16,
-        dwFileAttributes: u32,
-    ) -> i32;
+    fn MoveFileExW(lpExistingFileName: *const u16, lpNewFileName: *const u16, dwFlags: u32) -> i32;
+    fn SetFileAttributesW(lpFileName: *const u16, dwFileAttributes: u32) -> i32;
 }
 
 const MOVEFILE_DELAY_UNTIL_REBOOT: u32 = 0x00000004;
@@ -25,7 +18,7 @@ const FILE_ATTRIBUTE_NORMAL: u32 = 0x00000080;
 pub struct LeftoverItem {
     pub id: String,
     pub path: String,
-    pub item_type: String,  // "RegistryKey", "RegistryValue", "Folder", "File", "Service"
+    pub item_type: String, // "RegistryKey", "RegistryValue", "Folder", "File", "Service"
     pub scan_level: String, // "Safe", "Moderate", "Advanced"
     pub confidence: f32,
     pub size_bytes: u64,
@@ -54,7 +47,8 @@ pub fn scan_application_leftovers(
         || norm_pub == "unknown publisher";
 
     // 0. Query SQLite Software Footprint Signature Database
-    let footprints = crate::modules::db::Database::global().find_matching_footprints(app_name, publisher);
+    let footprints =
+        crate::modules::db::Database::global().find_matching_footprints(app_name, publisher);
     for fp in footprints {
         for folder_pattern in &fp.known_folders {
             let expanded = expand_env_vars(folder_pattern);
@@ -63,11 +57,19 @@ pub fn scan_application_leftovers(
                 let path_str = p.to_string_lossy().to_string();
                 if !seen_paths.contains(&path_str) {
                     seen_paths.insert(path_str.clone());
-                    let size = if p.is_dir() { dir_size(p) } else { p.metadata().map(|m| m.len()).unwrap_or(0) };
+                    let size = if p.is_dir() {
+                        dir_size(p)
+                    } else {
+                        p.metadata().map(|m| m.len()).unwrap_or(0)
+                    };
                     findings.push(LeftoverItem {
                         id: uuid::Uuid::new_v4().to_string(),
                         path: path_str,
-                        item_type: if p.is_dir() { "Folder".into() } else { "File".into() },
+                        item_type: if p.is_dir() {
+                            "Folder".into()
+                        } else {
+                            "File".into()
+                        },
                         scan_level: "Safe".into(),
                         confidence: 1.0,
                         size_bytes: size,
@@ -103,7 +105,10 @@ pub fn scan_application_leftovers(
                             scan_level: "Safe".into(),
                             confidence: 1.0,
                             size_bytes: 0,
-                            reason: format!("Verified registry footprint in SQLite Database ({})", fp.app_name),
+                            reason: format!(
+                                "Verified registry footprint in SQLite Database ({})",
+                                fp.app_name
+                            ),
                             is_shared: false,
                             eligible_for_deletion: true,
                             selected: true,
@@ -125,7 +130,11 @@ pub fn scan_application_leftovers(
                 findings.push(LeftoverItem {
                     id: uuid::Uuid::new_v4().to_string(),
                     path: path_str,
-                    item_type: if p.is_dir() { "Folder".into() } else { "File".into() },
+                    item_type: if p.is_dir() {
+                        "Folder".into()
+                    } else {
+                        "File".into()
+                    },
                     scan_level: "Safe".into(),
                     confidence: 1.0,
                     size_bytes: size,
@@ -179,7 +188,11 @@ pub fn scan_application_leftovers(
                     findings.push(LeftoverItem {
                         id: uuid::Uuid::new_v4().to_string(),
                         path: path_str,
-                        item_type: if direct_app.is_dir() { "Folder".into() } else { "File".into() },
+                        item_type: if direct_app.is_dir() {
+                            "Folder".into()
+                        } else {
+                            "File".into()
+                        },
                         scan_level: (*default_level).into(),
                         confidence: 0.98,
                         size_bytes: size,
@@ -208,7 +221,10 @@ pub fn scan_application_leftovers(
                                 scan_level: "Safe".into(),
                                 confidence: 0.99,
                                 size_bytes: size,
-                                reason: format!("Application profile directory under vendor path in {}", label),
+                                reason: format!(
+                                    "Application profile directory under vendor path in {}",
+                                    label
+                                ),
                                 is_shared: false,
                                 eligible_for_deletion: true,
                                 selected: true,
@@ -240,7 +256,10 @@ pub fn scan_application_leftovers(
                                         scan_level: "Safe".into(),
                                         confidence: 0.95,
                                         size_bytes: size,
-                                        reason: format!("Heuristically matched application folder in {}", label),
+                                        reason: format!(
+                                            "Heuristically matched application folder in {}",
+                                            label
+                                        ),
                                         is_shared: false,
                                         eligible_for_deletion: true,
                                         selected: true,
@@ -424,7 +443,8 @@ pub fn scan_application_leftovers(
                                         scan_level: "Moderate".into(),
                                         confidence: 0.95,
                                         size_bytes: size,
-                                        reason: "Windows execution trace prefetch file (.pf)".into(),
+                                        reason: "Windows execution trace prefetch file (.pf)"
+                                            .into(),
                                         is_shared: false,
                                         eligible_for_deletion: true,
                                         selected: scan_level != "Safe",
@@ -462,7 +482,9 @@ pub fn scan_application_leftovers(
                                         scan_level: "Safe".into(),
                                         confidence: 0.98,
                                         size_bytes: size,
-                                        reason: "Orphaned application crash memory dump file (.dmp)".into(),
+                                        reason:
+                                            "Orphaned application crash memory dump file (.dmp)"
+                                                .into(),
                                         is_shared: false,
                                         eligible_for_deletion: true,
                                         selected: true,
@@ -509,7 +531,8 @@ pub fn scan_application_leftovers(
 
                 // Vendor: Software\<Publisher>\<Token>
                 if !is_generic_pub && !publisher.trim().is_empty() {
-                    if let Ok(pub_key) = software.open_subkey_with_flags(publisher.trim(), KEY_READ) {
+                    if let Ok(pub_key) = software.open_subkey_with_flags(publisher.trim(), KEY_READ)
+                    {
                         if let Ok(_) = pub_key.open_subkey_with_flags(token, KEY_READ) {
                             let reg_path = format!(
                                 r"{}\{}\{}\{}",
@@ -541,10 +564,7 @@ pub fn scan_application_leftovers(
     }
 
     // 9. Registry App Paths Execution Redirects (HKLM & HKCU)
-    let app_paths_hives = [
-        (HKEY_LOCAL_MACHINE, "HKLM"),
-        (HKEY_CURRENT_USER, "HKCU"),
-    ];
+    let app_paths_hives = [(HKEY_LOCAL_MACHINE, "HKLM"), (HKEY_CURRENT_USER, "HKCU")];
     for (hive, hive_name) in &app_paths_hives {
         if let Ok(paths_key) = RegKey::predef(*hive).open_subkey_with_flags(
             r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
@@ -579,9 +599,21 @@ pub fn scan_application_leftovers(
 
     // 10. Auto-Run Startup Registry Values (Run & RunOnce)
     let run_hives = [
-        (HKEY_CURRENT_USER, "HKCU", r"Software\Microsoft\Windows\CurrentVersion\Run"),
-        (HKEY_LOCAL_MACHINE, "HKLM", r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"),
-        (HKEY_LOCAL_MACHINE, "HKLM", r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"),
+        (
+            HKEY_CURRENT_USER,
+            "HKCU",
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+        ),
+        (
+            HKEY_LOCAL_MACHINE,
+            "HKLM",
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+        ),
+        (
+            HKEY_LOCAL_MACHINE,
+            "HKLM",
+            r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run",
+        ),
     ];
 
     for (hive, hive_name, subpath) in &run_hives {
@@ -618,10 +650,9 @@ pub fn scan_application_leftovers(
     }
 
     // 11. Orphaned Windows Services Sweep (HKLM\SYSTEM\CurrentControlSet\Services)
-    if let Ok(services_key) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(
-        r"SYSTEM\CurrentControlSet\Services",
-        KEY_READ,
-    ) {
+    if let Ok(services_key) = RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags(r"SYSTEM\CurrentControlSet\Services", KEY_READ)
+    {
         for s_name in services_key.enum_keys().filter_map(|x| x.ok()) {
             if let Ok(sk) = services_key.open_subkey_with_flags(&s_name, KEY_READ) {
                 let image_path: String = sk.get_value("ImagePath").unwrap_or_default();
@@ -630,7 +661,8 @@ pub fn scan_application_leftovers(
 
                 let matched = tokens.iter().any(|token| {
                     let tok_low = token.to_lowercase();
-                    s_name_low.contains(&tok_low) || (!image_low.is_empty() && image_low.contains(&tok_low))
+                    s_name_low.contains(&tok_low)
+                        || (!image_low.is_empty() && image_low.contains(&tok_low))
                 });
 
                 if matched && !s_name_low.starts_with("ms") && !s_name_low.starts_with("win") {
@@ -657,9 +689,21 @@ pub fn scan_application_leftovers(
 
     // 12. Orphaned Uninstall Registry Keys
     let uninstall_hives = [
-        (HKEY_LOCAL_MACHINE, "HKLM", r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
-        (HKEY_LOCAL_MACHINE, "HKLM (32-bit)", r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
-        (HKEY_CURRENT_USER, "HKCU", r"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (
+            HKEY_LOCAL_MACHINE,
+            "HKLM",
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        ),
+        (
+            HKEY_LOCAL_MACHINE,
+            "HKLM (32-bit)",
+            r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        ),
+        (
+            HKEY_CURRENT_USER,
+            "HKCU",
+            r"Software\Microsoft\Windows\CurrentVersion\Uninstall",
+        ),
     ];
 
     for (hive, hive_name, subpath) in &uninstall_hives {
@@ -695,13 +739,26 @@ pub fn scan_application_leftovers(
     if scan_level == "Aggressive" || scan_level == "Forensic" || scan_level.is_empty() {
         // A. Shell Context Menu Handlers (HKLM & HKCU)
         let shell_roots = [
-            (HKEY_LOCAL_MACHINE, "HKLM", r"SOFTWARE\Classes\*\shellex\ContextMenuHandlers"),
-            (HKEY_LOCAL_MACHINE, "HKLM", r"SOFTWARE\Classes\Directory\shellex\ContextMenuHandlers"),
-            (HKEY_CURRENT_USER, "HKCU", r"Software\Classes\*\shellex\ContextMenuHandlers"),
+            (
+                HKEY_LOCAL_MACHINE,
+                "HKLM",
+                r"SOFTWARE\Classes\*\shellex\ContextMenuHandlers",
+            ),
+            (
+                HKEY_LOCAL_MACHINE,
+                "HKLM",
+                r"SOFTWARE\Classes\Directory\shellex\ContextMenuHandlers",
+            ),
+            (
+                HKEY_CURRENT_USER,
+                "HKCU",
+                r"Software\Classes\*\shellex\ContextMenuHandlers",
+            ),
         ];
 
         for (hive, hive_name, subpath) in &shell_roots {
-            if let Ok(shellex_key) = RegKey::predef(*hive).open_subkey_with_flags(subpath, KEY_READ) {
+            if let Ok(shellex_key) = RegKey::predef(*hive).open_subkey_with_flags(subpath, KEY_READ)
+            {
                 for handler_name in shellex_key.enum_keys().filter_map(|x| x.ok()) {
                     let h_low = handler_name.to_lowercase();
                     let matched = tokens.iter().any(|t| h_low.contains(&t.to_lowercase()));
@@ -730,12 +787,13 @@ pub fn scan_application_leftovers(
         // B. COM Class Registration (CLSID) InprocServer32 checking install location
         if !install_location.trim().is_empty() {
             let inst_low = install_location.to_lowercase();
-            if let Ok(clsid_key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(
-                r"Software\Classes\CLSID",
-                KEY_READ,
-            ) {
+            if let Ok(clsid_key) = RegKey::predef(HKEY_CURRENT_USER)
+                .open_subkey_with_flags(r"Software\Classes\CLSID", KEY_READ)
+            {
                 for clsid in clsid_key.enum_keys().filter_map(|x| x.ok()).take(200) {
-                    if let Ok(inproc) = clsid_key.open_subkey_with_flags(&format!(r"{}\InprocServer32", clsid), KEY_READ) {
+                    if let Ok(inproc) = clsid_key
+                        .open_subkey_with_flags(&format!(r"{}\InprocServer32", clsid), KEY_READ)
+                    {
                         let path_val: String = inproc.get_value("").unwrap_or_default();
                         if !path_val.is_empty() && path_val.to_lowercase().contains(&inst_low) {
                             let reg_path = format!(r"HKCU\Software\Classes\CLSID\{}", clsid);
@@ -773,7 +831,9 @@ pub fn scan_application_leftovers(
             .collect(),
         "Advanced" => findings
             .into_iter()
-            .filter(|f| f.scan_level == "Safe" || f.scan_level == "Moderate" || f.scan_level == "Advanced")
+            .filter(|f| {
+                f.scan_level == "Safe" || f.scan_level == "Moderate" || f.scan_level == "Advanced"
+            })
             .collect(),
         _ => findings, // "Aggressive" / "Forensic" returns all four tiers (Safe, Moderate, Advanced, Aggressive)
     }
@@ -783,12 +843,30 @@ fn expand_env_vars(raw: &str) -> String {
     let mut out = raw.to_string();
     let vars = [
         ("APPDATA", std::env::var("APPDATA").unwrap_or_default()),
-        ("LOCALAPPDATA", std::env::var("LOCALAPPDATA").unwrap_or_default()),
-        ("PROGRAMFILES(X86)", std::env::var("ProgramFiles(x86)").unwrap_or_default()),
-        ("PROGRAMFILES", std::env::var("ProgramFiles").unwrap_or_default()),
-        ("PROGRAMDATA", std::env::var("ProgramData").unwrap_or_default()),
-        ("USERPROFILE", std::env::var("USERPROFILE").unwrap_or_default()),
-        ("WINDIR", std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string())),
+        (
+            "LOCALAPPDATA",
+            std::env::var("LOCALAPPDATA").unwrap_or_default(),
+        ),
+        (
+            "PROGRAMFILES(X86)",
+            std::env::var("ProgramFiles(x86)").unwrap_or_default(),
+        ),
+        (
+            "PROGRAMFILES",
+            std::env::var("ProgramFiles").unwrap_or_default(),
+        ),
+        (
+            "PROGRAMDATA",
+            std::env::var("ProgramData").unwrap_or_default(),
+        ),
+        (
+            "USERPROFILE",
+            std::env::var("USERPROFILE").unwrap_or_default(),
+        ),
+        (
+            "WINDIR",
+            std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string()),
+        ),
     ];
 
     for (k, v) in &vars {
@@ -939,14 +1017,15 @@ fn force_delete_file_or_schedule(path: &Path) -> Result<(), String> {
     }
 
     // If immediate delete fails, schedule for kernel deletion on next reboot (Revo / IObit mechanism)
-    let res = unsafe {
-        MoveFileExW(wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT)
-    };
+    let res = unsafe { MoveFileExW(wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT) };
 
     if res != 0 {
         Ok(())
     } else {
-        Err(format!("Could not remove or schedule file '{}'", path.display()))
+        Err(format!(
+            "Could not remove or schedule file '{}'",
+            path.display()
+        ))
     }
 }
 
@@ -1003,7 +1082,11 @@ fn force_delete_folder_or_schedule(dir: &Path) -> Result<(), String> {
         unsafe {
             SetFileAttributesW(dir_wide.as_ptr(), FILE_ATTRIBUTE_NORMAL);
             if fs::remove_dir_all(dir).is_err() {
-                MoveFileExW(dir_wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT);
+                MoveFileExW(
+                    dir_wide.as_ptr(),
+                    std::ptr::null(),
+                    MOVEFILE_DELAY_UNTIL_REBOOT,
+                );
             }
         }
     }

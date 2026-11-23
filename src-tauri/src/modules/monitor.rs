@@ -48,14 +48,18 @@ struct ActiveSession {
 
 static ACTIVE_SESSION: Mutex<Option<ActiveSession>> = Mutex::new(None);
 
-pub fn start_live_session(installer_path: Option<String>, app_name: String) -> Result<LiveMonitorStatus, String> {
+pub fn start_live_session(
+    installer_path: Option<String>,
+    app_name: String,
+) -> Result<LiveMonitorStatus, String> {
     let mut lock = ACTIVE_SESSION.lock().map_err(|e| e.to_string())?;
 
     let before = take_snapshot();
     let mut events = Vec::new();
-    events.push(format!("[{}] Baseline system snapshot captured ({} registry keys, {} paths)", 
-        chrono::Local::now().format("%H:%M:%S"), 
-        before.registry_keys.len(), 
+    events.push(format!(
+        "[{}] Baseline system snapshot captured ({} registry keys, {} paths)",
+        chrono::Local::now().format("%H:%M:%S"),
+        before.registry_keys.len(),
         before.file_directories.len()
     ));
 
@@ -65,11 +69,21 @@ pub fn start_live_session(installer_path: Option<String>, app_name: String) -> R
     if let Some(ref path_str) = installer_path {
         let p = Path::new(path_str);
         if p.exists() {
-            events.push(format!("[{}] Launching installer: {}", chrono::Local::now().format("%H:%M:%S"), p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+            events.push(format!(
+                "[{}] Launching installer: {}",
+                chrono::Local::now().format("%H:%M:%S"),
+                p.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default()
+            ));
             match std::process::Command::new(p).spawn() {
                 Ok(c) => {
                     pid = Some(c.id());
-                    events.push(format!("[{}] Installer process active (PID: {})", chrono::Local::now().format("%H:%M:%S"), c.id()));
+                    events.push(format!(
+                        "[{}] Installer process active (PID: {})",
+                        chrono::Local::now().format("%H:%M:%S"),
+                        c.id()
+                    ));
                     child = Some(c);
                 }
                 Err(err) => {
@@ -78,7 +92,11 @@ pub fn start_live_session(installer_path: Option<String>, app_name: String) -> R
             }
         }
     } else {
-        events.push(format!("[{}] Live real-time system watcher started for '{}'", chrono::Local::now().format("%H:%M:%S"), app_name));
+        events.push(format!(
+            "[{}] Live real-time system watcher started for '{}'",
+            chrono::Local::now().format("%H:%M:%S"),
+            app_name
+        ));
     }
 
     let status = LiveMonitorStatus {
@@ -125,7 +143,11 @@ pub fn get_live_session_status() -> LiveMonitorStatus {
         match child.try_wait() {
             Ok(Some(status)) => {
                 running = false;
-                if !session.recent_events.iter().any(|e| e.contains("Installer process exited")) {
+                if !session
+                    .recent_events
+                    .iter()
+                    .any(|e| e.contains("Installer process exited"))
+                {
                     session.recent_events.push(format!(
                         "[{}] Installer process exited (code: {:?}). Ready to finalize trace.",
                         chrono::Local::now().format("%H:%M:%S"),
@@ -208,19 +230,24 @@ pub fn revert_trace(trace: &InstallationTrace) -> (usize, u64) {
     for reg_key in &trace.new_registry_keys {
         if reg_key.starts_with("Service:") {
             let svc_name = reg_key.trim_start_matches("Service:");
-            if let Ok(services) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(
-                r"SYSTEM\CurrentControlSet\Services",
-                KEY_ALL_ACCESS,
-            ) {
+            if let Ok(services) = RegKey::predef(HKEY_LOCAL_MACHINE)
+                .open_subkey_with_flags(r"SYSTEM\CurrentControlSet\Services", KEY_ALL_ACCESS)
+            {
                 if services.delete_subkey_all(svc_name).is_ok() {
                     removed_count += 1;
                 }
             }
         } else if let Some((_hive_str, sub)) = reg_key.split_once(':') {
             let (hive, prefix) = if sub.contains("Run") {
-                (HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run")
+                (
+                    HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Run",
+                )
             } else {
-                (HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run")
+                (
+                    HKEY_LOCAL_MACHINE,
+                    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                )
             };
             if let Ok(run_k) = RegKey::predef(hive).open_subkey_with_flags(prefix, KEY_ALL_ACCESS) {
                 if run_k.delete_value(sub).is_ok() {
@@ -237,7 +264,8 @@ pub fn revert_trace(trace: &InstallationTrace) -> (usize, u64) {
                 (HKEY_CURRENT_USER, reg_key.as_str())
             };
             if let Some((parent, leaf)) = sub.rsplit_once('\\') {
-                if let Ok(pk) = RegKey::predef(hive).open_subkey_with_flags(parent, KEY_ALL_ACCESS) {
+                if let Ok(pk) = RegKey::predef(hive).open_subkey_with_flags(parent, KEY_ALL_ACCESS)
+                {
                     if pk.delete_subkey_all(leaf).is_ok() {
                         removed_count += 1;
                     }
@@ -247,11 +275,12 @@ pub fn revert_trace(trace: &InstallationTrace) -> (usize, u64) {
     }
 
     // Remove from SQLite
-    crate::modules::db::Database::global().delete_installation_trace(&trace.id).ok();
+    crate::modules::db::Database::global()
+        .delete_installation_trace(&trace.id)
+        .ok();
 
     (removed_count, bytes_freed)
 }
-
 
 pub fn take_snapshot() -> SystemSnapshot {
     let mut reg_keys = Vec::new();

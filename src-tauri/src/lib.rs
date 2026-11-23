@@ -136,26 +136,27 @@ pub fn run() {
             commands::revert_installation_trace,
             commands::get_database_footprints,
         ])
-        .build(tauri::generate_context!()) {
-            Ok(app) => app,
-            Err(e) => {
-                log_line("app.log", &format!("Builder build error: {:?}", e));
-                return;
-            }
-        };
+        .build(tauri::generate_context!())
+    {
+        Ok(app) => app,
+        Err(e) => {
+            log_line("app.log", &format!("Builder build error: {:?}", e));
+            return;
+        }
+    };
 
     app.run(|_app_handle, event| {
-            // Previously EVERY runtime event (including hundreds of
-            // MainEventsCleared per minute) opened, wrote and flushed a file.
-            // That was pure disk churn; log only meaningful lifecycle events.
-            match event {
-                tauri::RunEvent::Exit => log_line("app.log", "Syntax Uninstaller stopped"),
-                tauri::RunEvent::WindowEvent {
-                    event: tauri::WindowEvent::CloseRequested { .. },
-                    ..
-                } => log_line("app.log", "Main window close requested"),
-                tauri::RunEvent::ExitRequested { .. } => log_line("app.log", "Exit requested"),
-                _ => {}
-            }
-        });
+        // Previously EVERY runtime event (including hundreds of
+        // MainEventsCleared per minute) opened, wrote and flushed a file.
+        // That was pure disk churn; log only meaningful lifecycle events.
+        match event {
+            tauri::RunEvent::Exit => log_line("app.log", "Syntax Uninstaller stopped"),
+            tauri::RunEvent::WindowEvent {
+                event: tauri::WindowEvent::CloseRequested { .. },
+                ..
+            } => log_line("app.log", "Main window close requested"),
+            tauri::RunEvent::ExitRequested { .. } => log_line("app.log", "Exit requested"),
+            _ => {}
+        }
+    });
 }

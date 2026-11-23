@@ -330,7 +330,11 @@ impl Database {
         })
     }
 
-    pub fn find_matching_footprints(&self, app_name: &str, publisher: &str) -> Vec<KnownAppFootprint> {
+    pub fn find_matching_footprints(
+        &self,
+        app_name: &str,
+        publisher: &str,
+    ) -> Vec<KnownAppFootprint> {
         let conn = match self.conn.lock() {
             Ok(c) => c,
             Err(_) => return Vec::new(),
@@ -360,8 +364,16 @@ impl Database {
                 id,
                 app_name: name,
                 publisher: publ,
-                known_keys: keys_str.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
-                known_folders: folders_str.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+                known_keys: keys_str
+                    .split(';')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+                known_folders: folders_str
+                    .split(';')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
                 silent_args: silent,
                 confidence_rating: conf,
             })
@@ -375,7 +387,8 @@ impl Database {
 
                 let is_match = app_clean.contains(&db_app)
                     || db_app.contains(&app_clean)
-                    || (!pub_clean.is_empty() && (pub_clean.contains(&db_pub) || db_pub.contains(&pub_clean)));
+                    || (!pub_clean.is_empty()
+                        && (pub_clean.contains(&db_pub) || db_pub.contains(&pub_clean)));
 
                 if is_match {
                     matches.push(item);
@@ -406,8 +419,16 @@ impl Database {
                     id,
                     app_name: name,
                     publisher: publ,
-                    known_keys: keys_str.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
-                    known_folders: folders_str.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+                    known_keys: keys_str
+                        .split(';')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect(),
+                    known_folders: folders_str
+                        .split(';')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect(),
                     silent_args: silent,
                     confidence_rating: conf,
                 })
@@ -421,7 +442,10 @@ impl Database {
         Ok(result)
     }
 
-    pub fn save_installation_trace(&self, trace: &crate::modules::monitor::InstallationTrace) -> Result<(), String> {
+    pub fn save_installation_trace(
+        &self,
+        trace: &crate::modules::monitor::InstallationTrace,
+    ) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let snapshot_json = serde_json::to_string(trace).map_err(|e| e.to_string())?;
 
@@ -443,7 +467,9 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_installation_traces(&self) -> Result<Vec<crate::modules::monitor::InstallationTrace>, String> {
+    pub fn get_installation_traces(
+        &self,
+    ) -> Result<Vec<crate::modules::monitor::InstallationTrace>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare("SELECT snapshot_data FROM installation_traces ORDER BY recorded_at DESC")
@@ -458,7 +484,9 @@ impl Database {
 
         let mut traces = Vec::new();
         for raw in rows.filter_map(|r| r.ok()) {
-            if let Ok(trace) = serde_json::from_str::<crate::modules::monitor::InstallationTrace>(&raw) {
+            if let Ok(trace) =
+                serde_json::from_str::<crate::modules::monitor::InstallationTrace>(&raw)
+            {
                 traces.push(trace);
             }
         }
@@ -472,7 +500,6 @@ impl Database {
         Ok(())
     }
 }
-
 
 fn dirs_or_local_data() -> PathBuf {
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {

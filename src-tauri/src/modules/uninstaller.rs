@@ -25,13 +25,9 @@ pub fn check_running_processes(app_name: &str, install_dir: &str) -> Vec<Process
             .map(|e| e.to_string_lossy().to_lowercase())
             .unwrap_or_default();
 
-        let mut hit = false;
-        if !norm_dir.is_empty() && exe_str.starts_with(&norm_dir) {
-            hit = true;
-        } else if p_name.contains(&norm_app) || (!norm_app.is_empty() && norm_app.contains(&p_name))
-        {
-            hit = true;
-        }
+        let hit = (!norm_dir.is_empty() && exe_str.starts_with(&norm_dir))
+            || p_name.contains(&norm_app)
+            || (!norm_app.is_empty() && norm_app.contains(&p_name));
 
         if hit {
             matches.push(ProcessMatch {

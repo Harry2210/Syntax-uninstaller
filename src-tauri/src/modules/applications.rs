@@ -362,8 +362,10 @@ fn find_app_path_executable(app_name: &str) -> Option<String> {
 fn find_start_menu_shortcut(app_name: &str) -> Option<String> {
     let norm = app_name.to_lowercase().replace(' ', "");
     let roots = [
-        std::env::var("ProgramData").map(|p| PathBuf::from(p).join(r"Microsoft\Windows\Start Menu\Programs")),
-        std::env::var("AppData").map(|a| PathBuf::from(a).join(r"Microsoft\Windows\Start Menu\Programs")),
+        std::env::var("ProgramData")
+            .map(|p| PathBuf::from(p).join(r"Microsoft\Windows\Start Menu\Programs")),
+        std::env::var("AppData")
+            .map(|a| PathBuf::from(a).join(r"Microsoft\Windows\Start Menu\Programs")),
     ];
 
     for r_res in roots {
@@ -375,7 +377,10 @@ fn find_start_menu_shortcut(app_name: &str) -> Option<String> {
                     .filter_map(|e| e.ok())
                 {
                     let p = entry.path();
-                    if p.extension().map(|e| e.eq_ignore_ascii_case("lnk")).unwrap_or(false) {
+                    if p.extension()
+                        .map(|e| e.eq_ignore_ascii_case("lnk"))
+                        .unwrap_or(false)
+                    {
                         if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
                             let s_norm = stem.to_lowercase().replace(' ', "");
                             if s_norm.contains(&norm) || norm.contains(&s_norm) {

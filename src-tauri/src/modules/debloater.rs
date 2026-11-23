@@ -379,7 +379,12 @@ const RULES: &[DebloatRule] = &[
 ];
 
 /// Writes a DWORD registry value, automatically utilizing elevated UAC escalation if machine scope access requires it
-fn write_reg_u32(hive: winreg::HKEY, subkey: &str, value_name: &str, val: u32) -> Result<(), String> {
+fn write_reg_u32(
+    hive: winreg::HKEY,
+    subkey: &str,
+    value_name: &str,
+    val: u32,
+) -> Result<(), String> {
     let reg = RegKey::predef(hive);
     let is_machine = hive == HKEY_LOCAL_MACHINE;
 
@@ -426,7 +431,10 @@ fn write_reg_u32(hive: winreg::HKEY, subkey: &str, value_name: &str, val: u32) -
         return Err("Administrator privileges required to modify system-wide Windows privacy policies. Please run Syntax Uninstaller as Administrator.".to_string());
     }
 
-    Err(format!("Failed to write registry value '{}\\{}'", subkey, value_name))
+    Err(format!(
+        "Failed to write registry value '{}\\{}'",
+        subkey, value_name
+    ))
 }
 
 pub fn get_debloat_items() -> Vec<DebloatItem> {

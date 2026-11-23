@@ -308,9 +308,11 @@ pub async fn start_live_monitor(
     installer_path: Option<String>,
     app_name: String,
 ) -> Result<monitor::LiveMonitorStatus, String> {
-    tauri::async_runtime::spawn_blocking(move || monitor::start_live_session(installer_path, app_name))
-        .await
-        .map_err(|e| format!("Failed to spawn monitor: {}", e))?
+    tauri::async_runtime::spawn_blocking(move || {
+        monitor::start_live_session(installer_path, app_name)
+    })
+    .await
+    .map_err(|e| format!("Failed to spawn monitor: {}", e))?
 }
 
 #[tauri::command]
@@ -329,16 +331,20 @@ pub async fn stop_live_monitor(app_name: String) -> Result<InstallationTrace, St
 
 #[tauri::command]
 pub async fn get_installation_traces() -> Result<Vec<InstallationTrace>, String> {
-    tauri::async_runtime::spawn_blocking(|| crate::modules::db::Database::global().get_installation_traces())
-        .await
-        .map_err(|e| format!("Database task failed: {}", e))?
+    tauri::async_runtime::spawn_blocking(|| {
+        crate::modules::db::Database::global().get_installation_traces()
+    })
+    .await
+    .map_err(|e| format!("Database task failed: {}", e))?
 }
 
 #[tauri::command]
 pub async fn delete_installation_trace(id: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || crate::modules::db::Database::global().delete_installation_trace(&id))
-        .await
-        .map_err(|e| format!("Database task failed: {}", e))?
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::modules::db::Database::global().delete_installation_trace(&id)
+    })
+    .await
+    .map_err(|e| format!("Database task failed: {}", e))?
 }
 
 #[tauri::command]
@@ -349,10 +355,13 @@ pub async fn revert_installation_trace(trace: InstallationTrace) -> Result<(usiz
 }
 
 #[tauri::command]
-pub async fn get_database_footprints() -> Result<Vec<crate::modules::db::KnownAppFootprint>, String> {
-    tauri::async_runtime::spawn_blocking(|| crate::modules::db::Database::global().get_all_footprints())
-        .await
-        .map_err(|e| format!("Database task failed: {}", e))?
+pub async fn get_database_footprints() -> Result<Vec<crate::modules::db::KnownAppFootprint>, String>
+{
+    tauri::async_runtime::spawn_blocking(|| {
+        crate::modules::db::Database::global().get_all_footprints()
+    })
+    .await
+    .map_err(|e| format!("Database task failed: {}", e))?
 }
 
 #[tauri::command]
@@ -459,7 +468,10 @@ pub async fn get_context_menu_items() -> Vec<ContextMenuItem> {
 }
 
 #[tauri::command]
-pub async fn toggle_context_menu_item(registry_path: String, enable: bool) -> Result<String, String> {
+pub async fn toggle_context_menu_item(
+    registry_path: String,
+    enable: bool,
+) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         context_menu::toggle_context_menu_item(&registry_path, enable)
     })

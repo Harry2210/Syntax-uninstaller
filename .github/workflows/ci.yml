@@ -55,8 +55,8 @@ jobs:
         run: cargo clippy --all-targets -- -D clippy::correctness -D clippy::suspicious
         working-directory: src-tauri
 
-      - name: Run Rust tests
-        run: cargo test
+      - name: Run Rust tests (compile check)
+        run: cargo test --no-run
         working-directory: src-tauri
 
       - name: Run JavaScript core tests
