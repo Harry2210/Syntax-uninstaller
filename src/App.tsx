@@ -15,13 +15,15 @@ import {
 } from './types';
 import { api } from './services/api';
 import { Sidebar } from './components/layout/Sidebar';
-import { Header } from './components/layout/Header';
-import { HubTabBar } from './components/layout/HubTabBar';
+import { TitleBar } from './components/layout/TitleBar';
 import { FloatingWidget } from './components/common/FloatingWidget';
 import { PageSkeleton } from './components/common/PageSkeleton';
 import { ToastStack, ToastItem } from './components/common/ToastStack';
 import { CommandPalette } from './components/common/CommandPalette';
 import { OnboardingModal } from './components/common/OnboardingModal';
+import { AppUpdateModal } from './components/common/AppUpdateModal';
+import { AppUpdateManifest, checkAppUpdate } from './services/appUpdater';
+import { Sparkles, Download, X } from 'lucide-react';
 import {
   AppSettings,
   ResolvedTheme,
@@ -71,7 +73,6 @@ const RegistryToolsPage = lazy(() => import('./pages/RegistryToolsPage').then((m
 const BackupManagerPage = lazy(() => import('./pages/BackupManagerPage').then((m) => ({ default: m.BackupManagerPage })));
 const SystemInfoPage = lazy(() => import('./pages/SystemInfoPage').then((m) => ({ default: m.SystemInfoPage })));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
-const HelpPage = lazy(() => import('./pages/HelpPage').then((m) => ({ default: m.HelpPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const AboutPage = lazy(() => import('./pages/AboutPage').then((m) => ({ default: m.AboutPage })));
 
@@ -94,6 +95,29 @@ export const App: React.FC = () => {
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
+  const [availableUpdate, setAvailableUpdate] = useState<AppUpdateManifest | null>(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [hasDismissedUpdateBanner, setHasDismissedUpdateBanner] = useState(false);
+
+  // Check for new Syntax Uninstaller updates on application launch via GitHub Gist
+  useEffect(() => {
+    let mounted = true;
+    const checkForUpdatesOnBoot = async () => {
+      try {
+        const res = await checkAppUpdate();
+        if (mounted && res.hasUpdate && res.manifest) {
+          setAvailableUpdate(res.manifest);
+          setIsUpdateModalOpen(true);
+        }
+      } catch {}
+    };
+
+    const t = window.setTimeout(checkForUpdatesOnBoot, 1200);
+    return () => {
+      mounted = false;
+      window.clearTimeout(t);
+    };
+  }, []);
 
   const mainRef = useRef<HTMLElement>(null);
   const toastTimers = useRef<Map<string, number>>(new Map());
@@ -368,7 +392,8 @@ export const App: React.FC = () => {
       case 'all-programs':
         return (
           <AllProgramsPage
-            apps={allApps}
+            apps={apps}
+            windowsApps={windowsApps}
             onRefresh={loadAllData}
             onLogNotification={addNotification}
             isLoading={isLoadingApps}
@@ -437,13 +462,7 @@ export const App: React.FC = () => {
       case 'notifications':
         return <NotificationsPage notifications={notifications} onClearAll={clearNotifications} />;
       case 'help':
-        return (
-          <HelpPage
-            onNavigate={navigate}
-            onReplayTour={() => setIsOnboardingOpen(true)}
-            onOpenPalette={() => setIsPaletteOpen(true)}
-          />
-        );
+        return <AboutPage />;
       case 'settings':
         return (
           <SettingsPage
@@ -460,31 +479,67 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-text-primary antialiased font-sans relative">
-      <Sidebar
-        currentPage={currentPage}
-        onSelectPage={navigate}
-        unreadNotificationsCount={unreadCount}
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0A0E1A] text-text-primary antialiased font-sans select-none relative">
+      {/* Sleek Custom Windows 11 TitleBar */}
+      <TitleBar
+        availableUpdate={availableUpdate}
+        onOpenUpdateModal={() => setIsUpdateModalOpen(true)}
       />
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
-        <Header
+      {/* Main App Canvas */}
+      <div className="flex flex-1 overflow-hidden min-h-0">
+        <Sidebar
           currentPage={currentPage}
-          onNavigate={navigate}
-          isAdmin={specs?.is_admin ?? false}
+          onSelectPage={navigate}
           unreadNotificationsCount={unreadCount}
-          onRefresh={loadAllData}
-          isRefreshing={isRefreshing}
-          onOpenPalette={() => setIsPaletteOpen(true)}
-          onOpenHelp={() => navigate('help')}
-          theme={settings.theme}
-          resolvedTheme={resolvedTheme}
-          onSetTheme={(theme) => updateSettings({ theme })}
         />
 
-        <HubTabBar currentPage={currentPage} onNavigate={navigate} />
+        {/* Large Rounded Dark Glass Container matching reference screenshot */}
+        <main
+          ref={mainRef}
+          className="flex-1 overflow-y-auto m-2 mr-3 mb-2.5 p-6 rounded-3xl bg-[#0D1322]/95 border border-white/[0.06] shadow-2xl relative"
+        >
+          {/* Top Banner when a new update is found via GitHub Gist */}
+          {availableUpdate && !hasDismissedUpdateBanner && (
+            <div className="mb-5 p-3.5 bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-transparent border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs animate-fade-in shadow-xl shadow-emerald-500/5 relative z-20">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl flex-shrink-0">
+                  <Sparkles className="w-4 h-4 animate-spin-slow" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <p className="font-bold text-white tracking-wide">
+                      Syntax Uninstaller v{availableUpdate.version} is now available!
+                    </p>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                      New Release
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 mt-0.5">
+                    {availableUpdate.name || 'A newer version with enhancements and fixes is ready for download.'}
+                  </p>
+                </div>
+              </div>
 
-        <main ref={mainRef} className="flex-1 overflow-y-auto p-6 relative">
+              <div className="flex items-center space-x-2 flex-shrink-0">
+                <button
+                  onClick={() => setIsUpdateModalOpen(true)}
+                  className="flex items-center space-x-1.5 px-4 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold rounded-xl shadow-md shadow-emerald-500/20 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Update Now</span>
+                </button>
+                <button
+                  onClick={() => setHasDismissedUpdateBanner(true)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Dismiss banner"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
           <motion.div
             key={currentPage}
             initial={pageTransition.initial}
@@ -507,10 +562,11 @@ export const App: React.FC = () => {
       <OnboardingModal
         isOpen={isOnboardingOpen}
         onClose={closeOnboarding}
-        onOpenHelp={() => {
-          closeOnboarding();
-          navigate('help');
-        }}
+      />
+
+      <AppUpdateModal
+        isOpen={isUpdateModalOpen}
+        manifest={availableUpdate}
       />
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />

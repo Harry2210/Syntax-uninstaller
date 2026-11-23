@@ -64,7 +64,7 @@ export const HUB_CONFIG: Record<HubId, { title: string; subtitle: string; tabs: 
       { id: 'junk-cleaner', label: 'Junk Files', icon: Trash2 },
       { id: 'space-analyzer', label: 'Disk Space Map', icon: PieChart },
       { id: 'windows-cleaner', label: 'Windows Privacy', icon: Sparkles },
-      { id: 'privacy-debloater', label: 'Privacy Shield', icon: ShieldAlert },
+      { id: 'privacy-debloater', label: 'Debloatware', icon: ShieldAlert },
       { id: 'browser-cleaner', label: 'Browser Cache', icon: Compass },
       { id: 'office-cleaner', label: 'Office Clutter', icon: FileSpreadsheet },
       { id: 'evidence-remover', label: 'Deleted-File Wiper', icon: EyeOff },

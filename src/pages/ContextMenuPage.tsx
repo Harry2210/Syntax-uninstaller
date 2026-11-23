@@ -56,7 +56,10 @@ export const ContextMenuPage: React.FC<ContextMenuPageProps> = ({
     );
 
     try {
-      await api.toggleContextMenuItem(item.registry_path, nextState);
+      const newPath = await api.toggleContextMenuItem(item.registry_path, nextState);
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, registry_path: newPath } : i))
+      );
       onLogNotification(
         nextState ? 'Context Menu Item Enabled' : 'Context Menu Item Disabled',
         `Shell handler "${item.name}" is now ${nextState ? 'visible' : 'hidden'} in Explorer.`,

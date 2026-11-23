@@ -18,7 +18,7 @@ interface Entry {
   group: string;
 }
 
-const GENERAL_PAGES: PageId[] = ['dashboard', 'notifications', 'help', 'settings', 'about'];
+const GENERAL_PAGES: PageId[] = ['dashboard', 'notifications', 'settings', 'about'];
 
 function buildEntries(): Entry[] {
   const entries: Entry[] = [];
@@ -90,6 +90,29 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
     return scored.map((item) => item.entry);
   }, [query]);
 
+  const { visibleGroups, orderedEntries } = useMemo(() => {
+    const groups: { title: string; items: { entry: Entry; visualIndex: number }[] }[] = [];
+    results.forEach((entry) => {
+      let group = groups.find((g) => g.title === entry.group);
+      if (!group) {
+        group = { title: entry.group, items: [] };
+        groups.push(group);
+      }
+      group.items.push({ entry, visualIndex: 0 });
+    });
+
+    const ordered: Entry[] = [];
+    let count = 0;
+    groups.forEach((g) => {
+      g.items.forEach((item) => {
+        item.visualIndex = count++;
+        ordered.push(item.entry);
+      });
+    });
+
+    return { visibleGroups: groups, orderedEntries: ordered };
+  }, [results]);
+
   useEffect(() => {
     if (isOpen) {
       setQuery('');
@@ -115,17 +138,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       }
       if (event.key === 'ArrowDown') {
         event.preventDefault();
-        setActiveIndex((prev) => (results.length === 0 ? 0 : (prev + 1) % results.length));
+        setActiveIndex((prev) => (orderedEntries.length === 0 ? 0 : (prev + 1) % orderedEntries.length));
         return;
       }
       if (event.key === 'ArrowUp') {
         event.preventDefault();
-        setActiveIndex((prev) => (results.length === 0 ? 0 : (prev - 1 + results.length) % results.length));
+        setActiveIndex((prev) => (orderedEntries.length === 0 ? 0 : (prev - 1 + orderedEntries.length) % orderedEntries.length));
         return;
       }
       if (event.key === 'Enter') {
         event.preventDefault();
-        const target = results[activeIndex];
+        const target = orderedEntries[activeIndex];
         if (target) {
           onNavigate(target.id);
           onClose();
@@ -135,25 +158,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, results, activeIndex, onNavigate, onClose]);
+  }, [isOpen, orderedEntries, activeIndex, onNavigate, onClose]);
 
   useEffect(() => {
     const active = listRef.current?.querySelector<HTMLElement>('[data-active="true"]');
     active?.scrollIntoView({ block: 'nearest' });
   }, [activeIndex]);
-
-  const visibleGroups = useMemo(() => {
-    const groups: { title: string; items: { entry: Entry; index: number }[] }[] = [];
-    results.forEach((entry, index) => {
-      let group = groups.find((g) => g.title === entry.group);
-      if (!group) {
-        group = { title: entry.group, items: [] };
-        groups.push(group);
-      }
-      group.items.push({ entry, index });
-    });
-    return groups;
-  }, [results]);
 
   return (
     <AnimatePresence>
@@ -208,13 +218,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
                     <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-text-muted/70">
                       {group.title}
                     </p>
-                    {group.items.map(({ entry, index }) => {
-                      const isActive = index === activeIndex;
+                    {group.items.map(({ entry, visualIndex }) => {
+                      const isActive = visualIndex === activeIndex;
                       return (
                         <button
                           key={entry.id}
                           data-active={isActive}
-                          onMouseEnter={() => setActiveIndex(index)}
+                          onMouseEnter={() => setActiveIndex(visualIndex)}
                           onClick={() => {
                             onNavigate(entry.id);
                             onClose();

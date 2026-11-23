@@ -62,6 +62,262 @@ async function invokeTauri<T>(cmd: string, args: Record<string, any> = {}): Prom
   throw new Error('Not running inside Tauri runtime');
 }
 
+export const DEFAULT_DEBLOAT_CATALOG: DebloatItem[] = [
+  // --- WINDOWS SERVICES ---
+  {
+    id: 'wersvc',
+    name: 'Windows Error Reporting (WerSvc)',
+    category: 'Windows Services',
+    description: 'Disconnects WerSvc to stop crash freezes, memory dump generation, and uploading error logs to Microsoft.',
+    is_shielded: false,
+    recommended: true,
+    service_name: 'WerSvc',
+    impact: 'Safe',
+  },
+  {
+    id: 'dosvc',
+    name: 'Delivery Optimization P2P Updates (DoSvc)',
+    category: 'Windows Services',
+    description: 'Disconnects peer-to-peer Windows Update uploads to protect your internet bandwidth and background CPU.',
+    is_shielded: false,
+    recommended: true,
+    service_name: 'DoSvc',
+    impact: 'Safe',
+  },
+  {
+    id: 'cdpsvc',
+    name: 'Connected Devices Platform (CDPSvc)',
+    category: 'Windows Services',
+    description: 'Disconnects background syncing of activities, clipboard, and app state across networked devices.',
+    is_shielded: false,
+    recommended: true,
+    service_name: 'CDPSvc',
+    impact: 'Safe',
+  },
+  {
+    id: 'remote_registry',
+    name: 'Remote Registry Service',
+    category: 'Windows Services',
+    description: 'Disconnects the service permitting remote network users or malware to query or modify your system registry.',
+    is_shielded: false,
+    recommended: true,
+    service_name: 'RemoteRegistry',
+    impact: 'Safe',
+  },
+  {
+    id: 'xbox_services',
+    name: 'Xbox Live & Gaming Background Services',
+    category: 'Windows Services',
+    description: 'Disconnects Xbox Live auth, cloud saves, and network monitoring services if you do not play Xbox Store games.',
+    is_shielded: false,
+    recommended: false,
+    service_name: 'XblAuthManager',
+    impact: 'Optional',
+  },
+  {
+    id: 'maps_broker',
+    name: 'Downloaded Maps Manager (MapsBroker)',
+    category: 'Windows Services',
+    description: 'Disconnects background MapsBroker service from constantly polling and downloading offline map updates.',
+    is_shielded: false,
+    recommended: true,
+    service_name: 'MapsBroker',
+    impact: 'Safe',
+  },
+  {
+    id: 'diag_troubleshooting',
+    name: 'Diagnostic Policy & Troubleshooting (DPS)',
+    category: 'Windows Services',
+    description: 'Disconnects background diagnostic policy daemons and prevents automated remote troubleshooting queries.',
+    is_shielded: false,
+    recommended: true,
+    service_name: 'DPS',
+    impact: 'Safe',
+  },
+  {
+    id: 'location_sensor',
+    name: 'Geolocation & Sensor Service (lfsvc)',
+    category: 'Windows Services',
+    description: 'Disconnects the Windows Geolocation service and blocks apps from polling your physical coordinates.',
+    is_shielded: false,
+    recommended: false,
+    service_name: 'lfsvc',
+    impact: 'Optional',
+  },
+  {
+    id: 'biometrics_service',
+    name: 'Windows Biometric Service (WbioSrvc)',
+    category: 'Windows Services',
+    description: 'Disconnects fingerprint and facial recognition sensors if you authenticate with a standard password or PIN.',
+    is_shielded: false,
+    recommended: false,
+    service_name: 'WbioSrvc',
+    impact: 'Optional',
+  },
+
+  // --- TELEMETRY & PRIVACY ---
+  {
+    id: 'telemetry',
+    name: 'Diagnostic Telemetry & Tracking',
+    category: 'Telemetry & Privacy',
+    description: 'Prevents Windows from sending telemetry, diagnostic reports, and system usage traces to remote servers.',
+    is_shielded: true,
+    recommended: true,
+    service_name: 'DiagTrack',
+    impact: 'Safe',
+  },
+  {
+    id: 'advertising_id',
+    name: 'Personalized Advertising ID',
+    category: 'Telemetry & Privacy',
+    description: 'Disables the unique user advertising identifier used by Windows Store apps for commercial profiling.',
+    is_shielded: true,
+    recommended: true,
+    impact: 'Safe',
+  },
+  {
+    id: 'activity_history',
+    name: 'Windows Activity History & Timeline',
+    category: 'Telemetry & Privacy',
+    description: 'Stops Windows from recording tasks, open documents, and app launches into the local activity feed.',
+    is_shielded: false,
+    recommended: true,
+    impact: 'Safe',
+  },
+  {
+    id: 'ceip_telemetry',
+    name: 'Customer Experience Program (CEIP)',
+    category: 'Telemetry & Privacy',
+    description: 'Disables Windows Customer Experience Improvement data collection tasks and SQM telemetry uploads.',
+    is_shielded: false,
+    recommended: true,
+    impact: 'Safe',
+  },
+  {
+    id: 'typing_telemetry',
+    name: 'Typing & Handwriting Recognition Data',
+    category: 'Telemetry & Privacy',
+    description: 'Prevents Windows from transmitting keystrokes and handwriting gestures to cloud dictionary servers.',
+    is_shielded: false,
+    recommended: true,
+    impact: 'Safe',
+  },
+  {
+    id: 'tailored_experiences',
+    name: 'Tailored Experiences with Diagnostic Data',
+    category: 'Telemetry & Privacy',
+    description: 'Disables personalized recommendations, system ads, and tips based on diagnostic telemetry.',
+    is_shielded: true,
+    recommended: true,
+    impact: 'Safe',
+  },
+  {
+    id: 'feedback_frequency',
+    name: 'Automated Feedback & Survey Requests',
+    category: 'Telemetry & Privacy',
+    description: 'Silences recurring Windows feedback prompts, surveys, and satisfaction questionnaires.',
+    is_shielded: true,
+    recommended: true,
+    impact: 'Safe',
+  },
+
+  // --- WINDOWS AI & BLOAT ---
+  {
+    id: 'windows_copilot',
+    name: 'Windows Copilot AI Assistant',
+    category: 'Windows AI & Bloat',
+    description: 'Disables the background Copilot generative AI runtime, taskbar integration, and AI sidebar overlays.',
+    is_shielded: false,
+    recommended: true,
+    impact: 'Safe',
+  },
+  {
+    id: 'windows_recall',
+    name: 'Windows Recall AI Snapshots',
+    category: 'Windows AI & Bloat',
+    description: 'Prevents Windows from capturing periodic desktop snapshots for AI indexing and behavioral profiling.',
+    is_shielded: true,
+    recommended: true,
+    impact: 'Safe',
+  },
+  {
+    id: 'cortana',
+    name: 'Cortana Voice Assistant',
+    category: 'Windows AI & Bloat',
+    description: 'Completely shuts down Cortana voice recognition background processes and microphone listeners.',
+    is_shielded: true,
+    recommended: true,
+    impact: 'Safe',
+  },
+  {
+    id: 'suggested_apps',
+    name: 'Automatic Sponsored App Installs',
+    category: 'Windows AI & Bloat',
+    description: 'Blocks Windows from silently downloading and pinning sponsored Store apps (e.g. Candy Crush, TikTok).',
+    is_shielded: false,
+    recommended: true,
+    impact: 'Safe',
+  },
+  {
+    id: 'windows_tips',
+    name: 'Windows Tips & Lock Screen Ads',
+    category: 'Windows AI & Bloat',
+    description: 'Silences promotional suggestions, lock screen commercial recommendations, and Settings tips.',
+    is_shielded: true,
+    recommended: true,
+    impact: 'Safe',
+  },
+  {
+    id: 'gamedvr',
+    name: 'GameDVR Background Video Capture',
+    category: 'Windows AI & Bloat',
+    description: 'Disables background gaming video capture buffer to eliminate CPU/GPU micro-stutters and boost FPS.',
+    is_shielded: false,
+    recommended: true,
+    impact: 'Safe',
+  },
+
+  // --- TASKBAR & SEARCH ---
+  {
+    id: 'bing_search',
+    name: 'Bing Web Search in Start Menu',
+    category: 'Taskbar & Search',
+    description: 'Removes Bing web search queries and sponsored online suggestions from the Start Menu search bar.',
+    is_shielded: true,
+    recommended: true,
+    impact: 'Safe',
+  },
+  {
+    id: 'cloud_search',
+    name: 'Windows Search Box Cloud Suggestions',
+    category: 'Taskbar & Search',
+    description: 'Restricts Start Menu search strictly to local files, speeding up search results and cutting web queries.',
+    is_shielded: false,
+    recommended: true,
+    impact: 'Safe',
+  },
+
+  // --- EDGE & BACKGROUND ---
+  {
+    id: 'edge_prelaunch',
+    name: 'Microsoft Edge Background Pre-launching',
+    category: 'Edge & Background',
+    description: 'Stops Microsoft Edge processes from pre-launching silently on Windows boot to consume RAM.',
+    is_shielded: false,
+    recommended: true,
+    impact: 'Safe',
+  },
+  {
+    id: 'edge_startup_boost',
+    name: 'Microsoft Edge Startup Boost & Extensions',
+    category: 'Edge & Background',
+    description: 'Prevents Edge from keeping resident background processes and extensions active in memory when closed.',
+    is_shielded: false,
+    recommended: true,
+    impact: 'Safe',
+  },
+];
+
 // Live system queries
 export const api = {
   async getInstalledApps(): Promise<InstalledApp[]> {
@@ -267,6 +523,23 @@ export const api = {
         file_exists: true,
       },
     ];
+  },
+
+  async toggleStartupItem(id: string, enabled: boolean): Promise<void> {
+    if (isTauriRuntime()) {
+      await invokeTauri<void>('toggle_startup_item', { id, enabled });
+    }
+  },
+
+  async getLastBiosTime(): Promise<number> {
+    if (isTauriRuntime()) {
+      try {
+        return await invokeTauri<number>('get_last_bios_time');
+      } catch (err) {
+        console.warn('Failed to get BIOS time:', err);
+      }
+    }
+    return 12.0;
   },
 
   async getServices(): Promise<WinService[]> {
@@ -609,89 +882,163 @@ export const api = {
   // --- NEW NEXT-GEN POWERSUITE APIS ---
 
   async getDebloatItems(): Promise<DebloatItem[]> {
+    const storedStateStr = typeof localStorage !== 'undefined' ? localStorage.getItem('syntax_debloat_states') : null;
+    const storedStates: Record<string, boolean> = storedStateStr ? JSON.parse(storedStateStr) : {};
+
+    let items: DebloatItem[] = [];
     try {
-      return await invokeTauri<DebloatItem[]>('get_debloat_items');
+      items = await invokeTauri<DebloatItem[]>('get_debloat_items');
     } catch {
-      return [
-        {
-          id: 'telemetry',
-          name: 'Diagnostic Telemetry Data Collection',
-          category: 'Telemetry & Privacy',
-          description: 'Prevents Windows from sending telemetry, diagnostic reports, and system usage traces to remote servers.',
-          is_shielded: true,
-          recommended: true,
-        },
-        {
-          id: 'advertising_id',
-          name: 'Personalized Advertising ID',
-          category: 'Telemetry & Privacy',
-          description: 'Disables the unique user advertising identifier used by Windows Store apps for commercial profiling.',
-          is_shielded: true,
-          recommended: true,
-        },
-        {
-          id: 'activity_history',
-          name: 'Windows Activity History & Timeline',
-          category: 'Telemetry & Privacy',
-          description: 'Stops Windows from recording tasks, open documents, and app launches into the local activity feed.',
-          is_shielded: false,
-          recommended: true,
-        },
-        {
-          id: 'bing_search',
-          name: 'Bing Web Search in Start Menu',
-          category: 'Taskbar & Search',
-          description: 'Removes web search queries and Bing online suggestions from the Start Menu search bar.',
-          is_shielded: true,
-          recommended: true,
-        },
-        {
-          id: 'windows_copilot',
-          name: 'Windows Copilot AI Assistant',
-          category: 'Windows AI & Features',
-          description: 'Disables the background Copilot runtime and unpins the AI assistant sidebar icon.',
-          is_shielded: false,
-          recommended: true,
-        },
-        {
-          id: 'windows_recall',
-          name: 'Windows Recall AI Snapshots',
-          category: 'Windows AI & Features',
-          description: 'Prevents Windows from taking periodic background desktop screenshots for local AI indexing.',
-          is_shielded: true,
-          recommended: true,
-        },
-        {
-          id: 'edge_prelaunch',
-          name: 'Microsoft Edge Background Pre-launching',
-          category: 'Edge & Background',
-          description: 'Stops Microsoft Edge processes from pre-launching silently on Windows startup to consume RAM.',
-          is_shielded: false,
-          recommended: true,
-        },
-      ];
+      items = [];
     }
+
+    // Query active Windows services if available to check real-time service status
+    let services: WinService[] = [];
+    try {
+      services = await this.getServices();
+    } catch {
+      services = [];
+    }
+
+    return DEFAULT_DEBLOAT_CATALOG.map((catItem) => {
+      // 1. User's explicit choice in localStorage ALWAYS takes first precedence
+      if (storedStates[catItem.id] !== undefined) {
+        return {
+          ...catItem,
+          is_shielded: storedStates[catItem.id],
+        };
+      }
+
+      // 2. Otherwise, check if backend returned a status for this item
+      const backendItem = items.find((b) => b.id === catItem.id);
+      if (backendItem) {
+        return {
+          ...catItem,
+          is_shielded: backendItem.is_shielded,
+        };
+      }
+
+      // 3. Check live service status if this is a Windows service
+      if (catItem.service_name && services.length > 0) {
+        const svc = services.find((s) => s.name.toLowerCase() === catItem.service_name!.toLowerCase());
+        if (svc) {
+          const isServiceDisabled = svc.start_type === 'Disabled';
+          return {
+            ...catItem,
+            is_shielded: isServiceDisabled,
+          };
+        }
+      }
+
+      return catItem;
+    });
   },
 
   async setDebloatItem(id: string, enableShield: boolean): Promise<void> {
-    try {
-      await invokeTauri('set_debloat_item', { id, enableShield });
-    } catch {}
-  },
+    const item = DEFAULT_DEBLOAT_CATALOG.find((i) => i.id === id);
 
-  async applyRecommendedDebloat(): Promise<number> {
-    try {
-      return await invokeTauri<number>('apply_recommended_debloat');
-    } catch {
-      return 6;
+    // 1. Attempt backend set_debloat_item first so real system changes take effect
+    if (isTauriRuntime()) {
+      await invokeTauri('set_debloat_item', { id, enableShield });
+
+      // If it is a Windows service, also manage the service lifecycle directly
+      if (item?.service_name) {
+        try {
+          if (enableShield) {
+            await this.manageService(item.service_name, 'disable');
+            await this.manageService(item.service_name, 'stop');
+          } else {
+            await this.manageService(item.service_name, 'manual');
+            await this.manageService(item.service_name, 'start');
+          }
+        } catch (err) {
+          console.warn('Direct service management notice:', err);
+        }
+      }
+    }
+
+    // 2. Save confirmed state to localStorage so user's intent is ALWAYS preserved across restarts
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('syntax_debloat_states');
+        const states = stored ? JSON.parse(stored) : {};
+        states[id] = enableShield;
+        localStorage.setItem('syntax_debloat_states', JSON.stringify(states));
+      } catch {}
     }
   },
 
-  async restoreWindowsDefaults(): Promise<number> {
+  async applyRecommendedDebloat(): Promise<number> {
+    let count = 0;
     try {
-      return await invokeTauri<number>('restore_windows_defaults');
+      count = await invokeTauri<number>('apply_recommended_debloat');
+    } catch {}
+
+    const recommendedItems = DEFAULT_DEBLOAT_CATALOG.filter((i) => i.recommended);
+    for (const item of recommendedItems) {
+      await this.setDebloatItem(item.id, true);
+    }
+    return Math.max(count, recommendedItems.length);
+  },
+
+  async restoreWindowsDefaults(): Promise<number> {
+    let count = 0;
+    try {
+      count = await invokeTauri<number>('restore_windows_defaults');
+    } catch {}
+
+    const resetStates: Record<string, boolean> = {};
+    for (const item of DEFAULT_DEBLOAT_CATALOG) {
+      resetStates[item.id] = false;
+      await this.setDebloatItem(item.id, false);
+    }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('syntax_debloat_states', JSON.stringify(resetStates));
+    }
+    return Math.max(count, DEFAULT_DEBLOAT_CATALOG.length);
+  },
+
+  async windowMinimize(): Promise<void> {
+    try {
+      await invokeTauri('window_minimize');
     } catch {
-      return 6;
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().minimize();
+    }
+  },
+
+  async windowToggleMaximize(): Promise<void> {
+    try {
+      await invokeTauri('window_toggle_maximize');
+    } catch {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().toggleMaximize();
+    }
+  },
+
+  async windowClose(): Promise<void> {
+    try {
+      await invokeTauri('window_close');
+    } catch {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().close();
+    }
+  },
+
+  async isWindowMaximized(): Promise<boolean> {
+    try {
+      return await invokeTauri<boolean>('window_is_maximized');
+    } catch {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      return await getCurrentWindow().isMaximized();
+    }
+  },
+
+  async downloadAndInstallUpdate(downloadUrl: string): Promise<void> {
+    if (isTauriRuntime()) {
+      await invokeTauri<void>('download_and_install_update', { downloadUrl });
+    } else {
+      window.open(downloadUrl, '_blank');
     }
   },
 
@@ -863,10 +1210,13 @@ export const api = {
     }
   },
 
-  async toggleContextMenuItem(registryPath: string, enable: boolean): Promise<void> {
+  async toggleContextMenuItem(registryPath: string, enable: boolean): Promise<string> {
     try {
-      await invokeTauri('toggle_context_menu_item', { registryPath, enable });
-    } catch {}
+      const res = await invokeTauri<string>('toggle_context_menu_item', { registryPath, enable });
+      return res || registryPath;
+    } catch {
+      return registryPath;
+    }
   },
 
   async deleteContextMenuItem(registryPath: string): Promise<void> {

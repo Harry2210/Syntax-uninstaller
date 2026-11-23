@@ -5,6 +5,7 @@
 
 # Local release artifacts (built binaries, copied runtime DLLs)
 /Syntax-Uninstaller.exe
+/Syntax-Uninstaller-Setup.exe
 /WebView2Loader.dll
 *.msi
 *.msix

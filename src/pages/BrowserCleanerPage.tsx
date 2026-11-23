@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CleanCategory } from '../types';
 import { api } from '../services/api';
-import { Compass, Trash2, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Compass, Trash2, AlertTriangle, ShieldAlert, RefreshCw } from 'lucide-react';
 import { ConfirmationDialog } from '../components/common/ConfirmationDialog';
 
 interface BrowserCleanerPageProps {
@@ -13,47 +13,28 @@ export const BrowserCleanerPage: React.FC<BrowserCleanerPageProps> = ({
   onRefresh,
   onLogNotification,
 }) => {
-  const [categories, setCategories] = useState<CleanCategory[]>([
-    {
-      id: 'chrome_cache',
-      name: 'Google Chrome Web Cache',
-      description: 'Cached webpage assets, images, and temporary scripts',
-      target_paths: [],
-      file_count: 1420,
-      total_size_bytes: 650000000,
-      selected: true,
-    },
-    {
-      id: 'edge_cache',
-      name: 'Microsoft Edge Web Cache',
-      description: 'Edge browser cached data and script resources',
-      target_paths: [],
-      file_count: 890,
-      total_size_bytes: 320000000,
-      selected: true,
-    },
-    {
-      id: 'browser_cookies',
-      name: 'Browser Cookies & Web Storage',
-      description: 'Saved login sessions and tracker cookies (May require logging into websites again)',
-      target_paths: [],
-      file_count: 450,
-      total_size_bytes: 14000000,
-      selected: false,
-    },
-    {
-      id: 'download_history',
-      name: 'Download List History',
-      description: 'Record of downloaded files (Does not delete downloaded files)',
-      target_paths: [],
-      file_count: 75,
-      total_size_bytes: 1024000,
-      selected: true,
-    },
-  ]);
-
+  const [categories, setCategories] = useState<CleanCategory[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  const loadTraces = async () => {
+    setIsLoading(true);
+    try {
+      const items = await api.scanBrowserTraces();
+      if (items && items.length > 0) {
+        setCategories(items.map((i) => ({ ...i, selected: !i.id.includes('cookie') })));
+      }
+    } catch (err) {
+      console.error('Failed to scan browser traces:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTraces();
+  }, []);
 
   const toggleCategory = (id: string) => {
     setCategories((prev) =>
@@ -100,14 +81,25 @@ export const BrowserCleanerPage: React.FC<BrowserCleanerPageProps> = ({
           </div>
         </div>
 
-        <button
-          disabled={totalBytes === 0 || isCleaning}
-          onClick={() => setShowConfirm(true)}
-          className="flex items-center space-x-2 px-5 py-2.5 bg-primary hover:bg-primary-hover disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20 transition-all"
-        >
-          <Trash2 className="w-4 h-4" />
-          <span>Clean Browsers ({(totalBytes / (1024 * 1024)).toFixed(0)} MB)</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={loadTraces}
+            disabled={isLoading || isCleaning}
+            className="flex items-center space-x-1.5 px-3.5 py-2.5 bg-background border border-border hover:bg-card text-text-primary rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+            title="Rescan browser traces"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>Scan</span>
+          </button>
+          <button
+            disabled={totalBytes === 0 || isCleaning || isLoading}
+            onClick={() => setShowConfirm(true)}
+            className="flex items-center space-x-2 px-5 py-2.5 bg-primary hover:bg-primary-hover disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20 transition-all"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Clean Browsers ({(totalBytes / (1024 * 1024)).toFixed(0)} MB)</span>
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

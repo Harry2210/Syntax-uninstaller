@@ -116,33 +116,67 @@ export const RegistryToolsPage: React.FC<RegistryToolsPageProps> = ({ onLogNotif
         </div>
       </div>
 
-      {/* Catalog of Key Locations */}
-      <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border">
-        {knownPaths.map((item) => (
-          <div
-            key={item.name}
-            className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-surface/50 transition-colors text-xs"
-          >
-            <div className="space-y-0.5 min-w-0">
-              <div className="flex items-center space-x-2">
-                <span className="font-bold text-text-primary">{item.name}</span>
-                <StatusBadge status={item.hive} variant="info" />
-              </div>
-              <p className="font-mono text-[11px] text-text-muted truncate max-w-xl">
-                {item.hive}\{item.path}
-              </p>
-              <p className="text-[11px] text-text-secondary">{item.description}</p>
-            </div>
-
-            <button
-              onClick={() => handleExport(item)}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-surface hover:bg-surface-elevated border border-border rounded-xl text-xs font-semibold text-text-primary self-end sm:self-center transition-colors"
-            >
-              <Download className="w-3.5 h-3.5 text-primary" />
-              <span>Export Key</span>
-            </button>
+      {/* Catalog of Key Locations Header & Search */}
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-surface/30">
+          <div>
+            <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">
+              Standard Application Registry Hives
+            </h4>
+            <p className="text-[11px] text-text-muted mt-0.5">
+              Quickly backup critical system and per-user software registry hives before modifications.
+            </p>
           </div>
-        ))}
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 text-text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter registry hives..."
+              className="w-full bg-surface border border-border rounded-xl pl-8 pr-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-primary"
+            />
+          </div>
+        </div>
+
+        <div className="divide-y divide-border">
+          {knownPaths
+            .filter((item) => {
+              const q = search.toLowerCase();
+              return (
+                !q ||
+                item.name.toLowerCase().includes(q) ||
+                item.path.toLowerCase().includes(q) ||
+                item.hive.toLowerCase().includes(q) ||
+                item.description.toLowerCase().includes(q)
+              );
+            })
+            .map((item) => (
+              <div
+                key={item.name}
+                className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-surface/50 transition-colors text-xs"
+              >
+                <div className="space-y-0.5 min-w-0">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-text-primary">{item.name}</span>
+                    <StatusBadge status={item.hive} variant="info" />
+                  </div>
+                  <p className="font-mono text-[11px] text-text-muted truncate max-w-xl">
+                    {item.hive}\{item.path}
+                  </p>
+                  <p className="text-[11px] text-text-secondary">{item.description}</p>
+                </div>
+
+                <button
+                  onClick={() => handleExport(item)}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-surface hover:bg-surface-elevated border border-border rounded-xl text-xs font-semibold text-text-primary self-end sm:self-center transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5 text-primary" />
+                  <span>Export Key</span>
+                </button>
+              </div>
+            ))}
+        </div>
       </div>
     </div>
   );

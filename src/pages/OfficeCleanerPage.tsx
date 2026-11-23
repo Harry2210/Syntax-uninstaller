@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CleanCategory } from '../types';
 import { api } from '../services/api';
-import { FileSpreadsheet, Trash2, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { FileSpreadsheet, Trash2, CheckCircle2, ShieldCheck, RefreshCw } from 'lucide-react';
 import { ConfirmationDialog } from '../components/common/ConfirmationDialog';
 
 interface OfficeCleanerPageProps {
@@ -13,29 +13,28 @@ export const OfficeCleanerPage: React.FC<OfficeCleanerPageProps> = ({
   onRefresh,
   onLogNotification,
 }) => {
-  const [categories, setCategories] = useState<CleanCategory[]>([
-    {
-      id: 'office_cache',
-      name: 'Microsoft Office Document Cache',
-      description: 'Synchronized temporary document revisions and cloud synchronization scratch files',
-      target_paths: [],
-      file_count: 42,
-      total_size_bytes: 78000000,
-      selected: true,
-    },
-    {
-      id: 'office_recent',
-      name: 'Office Recent Files List',
-      description: 'Shortcuts to recently edited Word, Excel, and PowerPoint documents',
-      target_paths: [],
-      file_count: 35,
-      total_size_bytes: 512000,
-      selected: true,
-    },
-  ]);
-
+  const [categories, setCategories] = useState<CleanCategory[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  const loadTraces = async () => {
+    setIsLoading(true);
+    try {
+      const items = await api.scanOfficeTraces();
+      if (items && items.length > 0) {
+        setCategories(items.map((i) => ({ ...i, selected: true })));
+      }
+    } catch (err) {
+      console.error('Failed to scan office traces:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTraces();
+  }, []);
 
   const toggleCategory = (id: string) => {
     setCategories((prev) =>
@@ -63,6 +62,8 @@ export const OfficeCleanerPage: React.FC<OfficeCleanerPageProps> = ({
     }
   };
 
+  const selectedCount = categories.filter((c) => c.selected).length;
+
   return (
     <div className="space-y-6 pb-12 animate-fade-in max-w-5xl">
       <div className="p-5 bg-card border border-border rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -78,13 +79,25 @@ export const OfficeCleanerPage: React.FC<OfficeCleanerPageProps> = ({
           </div>
         </div>
 
-        <button
-          onClick={() => setShowConfirm(true)}
-          className="flex items-center space-x-2 px-5 py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20 transition-all"
-        >
-          <Trash2 className="w-4 h-4" />
-          <span>Clean Office Cache</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={loadTraces}
+            disabled={isLoading || isCleaning}
+            className="flex items-center space-x-1.5 px-3.5 py-2.5 bg-background border border-border hover:bg-card text-text-primary rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+            title="Rescan Office traces"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>Scan</span>
+          </button>
+          <button
+            disabled={selectedCount === 0 || isCleaning || isLoading}
+            onClick={() => setShowConfirm(true)}
+            className="flex items-center space-x-2 px-5 py-2.5 bg-primary hover:bg-primary-hover disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20 transition-all"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Clean Office Cache</span>
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

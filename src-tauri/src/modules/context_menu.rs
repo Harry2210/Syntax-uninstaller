@@ -67,7 +67,7 @@ pub fn get_context_menu_items() -> Vec<ContextMenuItem> {
     items
 }
 
-pub fn toggle_context_menu_item(registry_path: &str, enable: bool) -> Result<(), String> {
+pub fn toggle_context_menu_item(registry_path: &str, enable: bool) -> Result<String, String> {
     // Expected format: HKCR\<subpath>\<subkey_name>
     if !registry_path.starts_with(r"HKCR\") {
         return Err("Invalid registry path".into());
@@ -87,17 +87,21 @@ pub fn toggle_context_menu_item(registry_path: &str, enable: bool) -> Result<(),
 
     let is_currently_disabled = current_name.starts_with('-');
 
-    if enable && is_currently_disabled {
+    let new_name = if enable && is_currently_disabled {
         // Strip leading '-'
         let target_name = &current_name[1..];
         copy_and_delete_subkey(&parent, current_name, target_name)?;
+        target_name.to_string()
     } else if !enable && !is_currently_disabled {
         // Add leading '-'
         let target_name = format!("-{}", current_name);
         copy_and_delete_subkey(&parent, current_name, &target_name)?;
-    }
+        target_name
+    } else {
+        current_name.to_string()
+    };
 
-    Ok(())
+    Ok(format!(r"HKCR\{}\{}", parent_path, new_name))
 }
 
 pub fn delete_context_menu_item(registry_path: &str) -> Result<(), String> {

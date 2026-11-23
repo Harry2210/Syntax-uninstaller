@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AlertTriangle, X, ShieldAlert } from 'lucide-react';
 
 interface ConfirmationDialogProps {
@@ -31,8 +31,25 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   onCancel,
 }) => {
   const [confirmed, setConfirmed] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setConfirmed(false);
+    }
+  }, [isOpen]);
+
   const dangerous = Boolean(isDangerous || isDanger);
   const actionText = confirmLabel || confirmText || 'Proceed';
+
+  const handleCancel = () => {
+    setConfirmed(false);
+    onCancel();
+  };
+
+  const handleConfirm = () => {
+    setConfirmed(false);
+    onConfirm();
+  };
 
   if (!isOpen) return null;
 
@@ -54,7 +71,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
           </div>
           <button
-            onClick={onCancel}
+            onClick={handleCancel}
             className="text-text-muted hover:text-text-primary transition-colors p-1"
           >
             <X className="w-4 h-4" />
@@ -93,17 +110,14 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         {/* Footer */}
         <div className="flex items-center justify-end space-x-3 px-6 py-4 border-t border-border bg-surface/30">
           <button
-            onClick={onCancel}
+            onClick={handleCancel}
             className="px-4 py-2 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface rounded-lg border border-border transition-colors"
           >
             {cancelText}
           </button>
           <button
             disabled={requireCheckbox && !confirmed}
-            onClick={() => {
-              setConfirmed(false);
-              onConfirm();
-            }}
+            onClick={handleConfirm}
             className={`px-4 py-2 text-xs font-medium text-white rounded-lg transition-colors ${
               dangerous
                 ? 'bg-danger hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed'

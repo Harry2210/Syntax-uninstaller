@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use winreg::enums::*;
 use winreg::{RegKey, HKEY};
 
@@ -243,6 +243,13 @@ fn scan_registry_view(
             }
         }
 
+        // 2.5 If still missing, check Start Menu shortcuts (.lnk files)
+        if display_icon.trim().is_empty() {
+            if let Some(lnk_path) = find_start_menu_shortcut(trimmed_name) {
+                display_icon = lnk_path;
+            }
+        }
+
         // 3. Extract authentic high-res base64 icon using native Win32 FFI.
         //    Wrapped in catch_unwind: one malformed icon must never abort the
         //    whole inventory scan (which would make the app look empty).
@@ -349,6 +356,37 @@ fn find_app_path_executable(app_name: &str) -> Option<String> {
         }
     }
 
+    None
+}
+
+fn find_start_menu_shortcut(app_name: &str) -> Option<String> {
+    let norm = app_name.to_lowercase().replace(' ', "");
+    let roots = [
+        std::env::var("ProgramData").map(|p| PathBuf::from(p).join(r"Microsoft\Windows\Start Menu\Programs")),
+        std::env::var("AppData").map(|a| PathBuf::from(a).join(r"Microsoft\Windows\Start Menu\Programs")),
+    ];
+
+    for r_res in roots {
+        if let Ok(root) = r_res {
+            if root.exists() {
+                for entry in walkdir::WalkDir::new(root)
+                    .max_depth(3)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
+                    let p = entry.path();
+                    if p.extension().map(|e| e.eq_ignore_ascii_case("lnk")).unwrap_or(false) {
+                        if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                            let s_norm = stem.to_lowercase().replace(' ', "");
+                            if s_norm.contains(&norm) || norm.contains(&s_norm) {
+                                return Some(p.to_string_lossy().to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     None
 }
 

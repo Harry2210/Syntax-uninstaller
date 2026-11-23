@@ -4,20 +4,20 @@ import { PAGE_META } from '../../data/pages';
 import {
   Search,
   Shield,
-  Bell,
   Settings,
   Wrench,
   ShieldCheck,
   RefreshCw,
   ChevronRight,
-  HelpCircle,
   Command,
   Sun,
   Moon,
+  Sparkles,
 } from 'lucide-react';
 import { PAGE_TO_HUB, HUB_CONFIG } from './HubTabBar';
 import { Tooltip } from '../common/Tooltip';
 import { ResolvedTheme, ThemeMode } from '../../services/preferences';
+import { AppUpdateManifest } from '../../services/appUpdater';
 
 interface HeaderProps {
   currentPage: PageId;
@@ -27,7 +27,8 @@ interface HeaderProps {
   onRefresh?: () => void;
   isRefreshing?: boolean;
   onOpenPalette?: () => void;
-  onOpenHelp?: () => void;
+  availableUpdate?: AppUpdateManifest | null;
+  onOpenUpdateModal?: () => void;
   theme?: ThemeMode;
   resolvedTheme?: ResolvedTheme;
   onSetTheme?: (theme: ThemeMode) => void;
@@ -41,7 +42,8 @@ export const Header: React.FC<HeaderProps> = ({
   onRefresh,
   isRefreshing,
   onOpenPalette,
-  onOpenHelp,
+  availableUpdate,
+  onOpenUpdateModal,
   resolvedTheme = 'dark',
   onSetTheme,
 }) => {
@@ -157,6 +159,19 @@ export const Header: React.FC<HeaderProps> = ({
           </Tooltip>
         )}
 
+        {/* App Update Available Button */}
+        {availableUpdate && onOpenUpdateModal && (
+          <button
+            onClick={onOpenUpdateModal}
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-500/20 animate-pulse transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer"
+            title={`Syntax Uninstaller v${availableUpdate.version} is available!`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-white" />
+            <span className="hidden sm:inline">Update Ready</span>
+            <span className="font-mono text-[10px] bg-black/25 px-1.5 py-0.5 rounded">v{availableUpdate.version}</span>
+          </button>
+        )}
+
         {/* Quick escape hatch for apps that refuse to uninstall */}
         <Tooltip content="Deep purge for broken or corrupted apps" position="bottom">
           <button
@@ -165,34 +180,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Wrench className="w-3.5 h-3.5" />
             <span>Stuck app?</span>
-          </button>
-        </Tooltip>
-
-        {onOpenHelp && (
-          <Tooltip content="Help & beginner guide" position="bottom">
-            <button
-              onClick={onOpenHelp}
-              className="p-2 text-text-secondary hover:text-text-primary hover:bg-surface rounded-lg border border-border transition-all duration-150 hover:scale-105 active:scale-95"
-              aria-label="Open help guide"
-            >
-              <HelpCircle className="w-4 h-4" />
-            </button>
-          </Tooltip>
-        )}
-
-        {/* Notifications Icon */}
-        <Tooltip content="Notification Center" position="bottom">
-          <button
-            onClick={() => onNavigate('notifications')}
-            className="relative p-2 text-text-secondary hover:text-text-primary hover:bg-surface rounded-lg border border-border transition-all duration-150 hover:scale-105 active:scale-95"
-            aria-label={`Notifications${unreadNotificationsCount > 0 ? `, ${unreadNotificationsCount} unread` : ''}`}
-          >
-            <Bell className="w-4 h-4" />
-            {unreadNotificationsCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-danger text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-sidebar">
-                {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
-              </span>
-            )}
           </button>
         </Tooltip>
 

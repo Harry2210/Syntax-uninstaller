@@ -45,28 +45,90 @@ pub struct WindowsApp {
 }
 
 pub fn get_installed_windows_apps() -> Vec<WindowsApp> {
-    // AppX enumeration starts a PowerShell process and extracts package icons.
-    // It is the slowest inventory read, and the dashboard/page/refresh path can
-    // ask for it several times in a row, so keep a short cache.
     cache::cached("windows_apps:list", Duration::from_secs(30), || {
         scan_windows_apps()
     })
 }
 
 fn scan_windows_apps() -> Vec<WindowsApp> {
-    // Keys are explicitly lower_snake_case to match `WindowsApp`. The previous
-    // PascalCase JSON (Name, PackageFullName, …) failed to deserialize, which is
-    // why the Windows Apps page always looked empty.
     let script = r#"
+        $sa = @{}
+        try {
+            Get-StartApps | Where-Object { $_.AppID -like '*!*' } | ForEach-Object {
+                $p = $_.AppID.Split('!')[0]
+                if (-not $sa.ContainsKey($p)) {
+                    $sa[$p] = $_.Name
+                }
+            }
+        } catch {}
+
+        $known = @{
+            'Microsoft.WindowsCalculator' = 'Calculator'
+            'Microsoft.ScreenSketch' = 'Snipping Tool'
+            'Microsoft.WindowsCamera' = 'Camera'
+            'Microsoft.WindowsSoundRecorder' = 'Sound Recorder'
+            'Microsoft.WindowsTerminal' = 'Terminal'
+            'Microsoft.Paint' = 'Paint'
+            'Microsoft.MSPaint' = 'Paint 3D'
+            'Microsoft.Windows.Photos' = 'Photos'
+            'Microsoft.ZuneVideo' = 'Films & TV'
+            'Microsoft.ZuneMusic' = 'Media Player'
+            'Microsoft.YourPhone' = 'Phone Link'
+            'Microsoft.WindowsStore' = 'Microsoft Store'
+            'Microsoft.XboxGamingOverlay' = 'Game Bar'
+            'Microsoft.XboxApp' = 'Xbox'
+            'Microsoft.XboxSpeechToTextOverlay' = 'Xbox Game Speech'
+            'Microsoft.WindowsAlarms' = 'Clock'
+            'Microsoft.WindowsMaps' = 'Maps'
+            'Microsoft.BingWeather' = 'Weather'
+            'Microsoft.BingNews' = 'News'
+            'Microsoft.MicrosoftStickyNotes' = 'Sticky Notes'
+            'Microsoft.GetHelp' = 'Get Help'
+            'Microsoft.Getstarted' = 'Tips'
+            'Microsoft.MicrosoftOfficeHub' = 'Copilot / Microsoft 365'
+            'Microsoft.SecHealthUI' = 'Windows Security'
+            'Microsoft.WindowsFeedbackHub' = 'Feedback Hub'
+            'Microsoft.Todos' = 'Microsoft To Do'
+            'Microsoft.PowerAutomateDesktop' = 'Power Automate'
+            'Microsoft.WindowsNotepad' = 'Notepad'
+            'AnthropicPBC.Claude' = 'Claude'
+            'SpotifyAB.SpotifyMusic' = 'Spotify'
+            'WhatsApp' = 'WhatsApp'
+            'TelegramMessengerLLP.TelegramDesktop' = 'Telegram'
+        }
+
         Get-AppxPackage |
-        Where-Object { $_.IsFramework -eq $false -and $_.NonRemovable -ne $true } |
-        Select-Object @{Name='name';Expression={$_.Name}},
-                      @{Name='package_full_name';Expression={$_.PackageFullName}},
-                      @{Name='publisher';Expression={$_.Publisher}},
-                      @{Name='version';Expression={$_.Version.ToString()}},
-                      @{Name='install_location';Expression={if ($_.InstallLocation) { $_.InstallLocation } else { '' }}},
-                      @{Name='non_removable';Expression={[bool]$_.NonRemovable}} |
-        ConvertTo-Json -Compress
+        Where-Object { -not $_.IsFramework -and -not $_.NonRemovable } |
+        ForEach-Object {
+            $raw = $_.Name
+            $pfn = $_.PackageFamilyName
+            $friendly = $raw
+
+            if ($sa.ContainsKey($pfn) -and $sa[$pfn]) {
+                $friendly = $sa[$pfn]
+            } elseif ($known.ContainsKey($raw)) {
+                $friendly = $known[$raw]
+            } else {
+                $clean = $raw -replace '^Microsoft\.', '' -replace '^MicrosoftWindows\.', '' -replace '^AnthropicPBC\.', ''
+                $clean = ($clean -creplace '([a-z])([A-Z])', '$1 $2').Trim()
+                if ($clean) { $friendly = $clean }
+            }
+
+            $pub = $_.Publisher
+            if ($pub -match 'CN=([^,]+)') {
+                $pub = $Matches[1]
+            }
+
+            [PSCustomObject]@{
+                name = $friendly
+                package_full_name = $_.PackageFullName
+                publisher = if ($pub) { $pub } else { 'Microsoft Corporation' }
+                version = $_.Version.ToString()
+                install_location = if ($_.InstallLocation) { $_.InstallLocation } else { '' }
+                non_removable = [bool]$_.NonRemovable
+                display_icon = ''
+            }
+        } | ConvertTo-Json -Compress
     "#;
 
     let output = match winproc::powershell(script, Duration::from_secs(60)) {
@@ -95,7 +157,7 @@ fn scan_windows_apps() -> Vec<WindowsApp> {
         }
     }
 
-    // Sort alphabetically by name
+    // Sort alphabetically by friendly name
     apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     apps
 }

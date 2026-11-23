@@ -59,8 +59,8 @@ export const ForcedUninstallPage: React.FC<ForcedUninstallPageProps> = ({
     setShowConfirm(false);
     setIsRemoving(true);
     try {
-      // 1. Automatic safety backup
-      await api.backupRegistryKey(`HKCU\\Software\\${targetName || 'Custom'}`, targetName || 'ForcedBackup');
+      // 1. Automatic safety backup (best-effort)
+      await api.backupRegistryKey(`HKCU\\Software\\${targetName || 'Custom'}`, targetName || 'ForcedBackup').catch(() => {});
 
       // 2. Remove approved items
       const [count, bytes] = await api.removeLeftovers(findings);

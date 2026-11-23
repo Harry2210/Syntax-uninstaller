@@ -1,6 +1,15 @@
 use crate::modules::{applications, cleaner, debloater, system_info};
 use std::fs;
 
+fn escape_html(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
 pub fn generate_audit_html() -> String {
     let specs = system_info::get_system_specs();
     let apps = applications::get_installed_apps();
@@ -34,7 +43,12 @@ pub fn generate_audit_html() -> String {
                 <td style="padding:8px 12px; border-bottom:1px solid #283448; font-family:monospace;">{} MB</td>
                 <td style="padding:8px 12px; border-bottom:1px solid #283448; font-weight:700; color:{};">{}%</td>
             </tr>"#,
-            app.name, app.publisher, app.version, size_mb, score_color, app.health_score
+            escape_html(&app.name),
+            escape_html(&app.publisher),
+            escape_html(&app.version),
+            size_mb,
+            score_color,
+            app.health_score
         ));
     }
 
@@ -221,13 +235,13 @@ pub fn generate_audit_html() -> String {
         healthy_apps_count,
         low_health_count,
         shielded_count,
-        specs.computer_name,
-        specs.username,
+        escape_html(&specs.computer_name),
+        escape_html(&specs.username),
         specs.is_admin,
-        specs.os_name,
-        specs.os_version,
-        specs.architecture,
-        specs.cpu_name,
+        escape_html(&specs.os_name),
+        escape_html(&specs.os_version),
+        escape_html(&specs.architecture),
+        escape_html(&specs.cpu_name),
         specs.total_ram_mb,
         app_rows,
         total_junk_mb

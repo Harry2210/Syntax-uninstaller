@@ -5,11 +5,27 @@ use std::path::{Path, PathBuf};
 use winreg::enums::*;
 use winreg::RegKey;
 
+#[link(name = "kernel32")]
+extern "system" {
+    fn MoveFileExW(
+        lpExistingFileName: *const u16,
+        lpNewFileName: *const u16,
+        dwFlags: u32,
+    ) -> i32;
+    fn SetFileAttributesW(
+        lpFileName: *const u16,
+        dwFileAttributes: u32,
+    ) -> i32;
+}
+
+const MOVEFILE_DELAY_UNTIL_REBOOT: u32 = 0x00000004;
+const FILE_ATTRIBUTE_NORMAL: u32 = 0x00000080;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LeftoverItem {
     pub id: String,
     pub path: String,
-    pub item_type: String,  // "RegistryKey", "RegistryValue", "Folder", "File"
+    pub item_type: String,  // "RegistryKey", "RegistryValue", "Folder", "File", "Service"
     pub scan_level: String, // "Safe", "Moderate", "Advanced"
     pub confidence: f32,
     pub size_bytes: u64,
@@ -48,11 +64,7 @@ pub fn scan_application_leftovers(
                 findings.push(LeftoverItem {
                     id: uuid::Uuid::new_v4().to_string(),
                     path: path_str,
-                    item_type: if p.is_dir() {
-                        "Folder".into()
-                    } else {
-                        "File".into()
-                    },
+                    item_type: if p.is_dir() { "Folder".into() } else { "File".into() },
                     scan_level: "Safe".into(),
                     confidence: 1.0,
                     size_bytes: size,
@@ -65,7 +77,7 @@ pub fn scan_application_leftovers(
         }
     }
 
-    // 2. Multi-Folder Filesystem Crawler: AppData (Roaming), LocalAppData, LocalLow, ProgramData
+    // 2. Multi-Folder Filesystem Crawler: AppData, LocalAppData, LocalLow, ProgramData, Program Files
     let mut env_roots: Vec<(&str, PathBuf, &str)> = Vec::new();
     if let Ok(appdata) = std::env::var("APPDATA") {
         env_roots.push(("Roaming AppData", PathBuf::from(appdata), "Safe"));
@@ -80,6 +92,12 @@ pub fn scan_application_leftovers(
     }
     if let Ok(progdata) = std::env::var("PROGRAMDATA") {
         env_roots.push(("ProgramData", PathBuf::from(progdata), "Safe"));
+    }
+    if let Ok(progfiles) = std::env::var("ProgramFiles") {
+        env_roots.push(("Program Files", PathBuf::from(progfiles), "Safe"));
+    }
+    if let Ok(progfiles86) = std::env::var("ProgramFiles(x86)") {
+        env_roots.push(("Program Files (x86)", PathBuf::from(progfiles86), "Safe"));
     }
 
     for (label, base_path, default_level) in &env_roots {
@@ -100,13 +118,9 @@ pub fn scan_application_leftovers(
                     findings.push(LeftoverItem {
                         id: uuid::Uuid::new_v4().to_string(),
                         path: path_str,
-                        item_type: if direct_app.is_dir() {
-                            "Folder".into()
-                        } else {
-                            "File".into()
-                        },
+                        item_type: if direct_app.is_dir() { "Folder".into() } else { "File".into() },
                         scan_level: (*default_level).into(),
-                        confidence: 0.96,
+                        confidence: 0.98,
                         size_bytes: size,
                         reason: format!("Dedicated application cache/data directory in {}", label),
                         is_shared: false,
@@ -131,12 +145,9 @@ pub fn scan_application_leftovers(
                                 path: path_str,
                                 item_type: "Folder".into(),
                                 scan_level: "Safe".into(),
-                                confidence: 0.98,
+                                confidence: 0.99,
                                 size_bytes: size,
-                                reason: format!(
-                                    "Application profile directory under vendor path in {}",
-                                    label
-                                ),
+                                reason: format!("Application profile directory under vendor path in {}", label),
                                 is_shared: false,
                                 eligible_for_deletion: true,
                                 selected: true,
@@ -155,6 +166,7 @@ pub fn scan_application_leftovers(
                             let folder_low = folder_name.to_lowercase();
                             if folder_low == norm_token
                                 || folder_low.starts_with(&format!("{}_", norm_token))
+                                || folder_low.starts_with(&format!("{}-", norm_token))
                             {
                                 let path_str = path.to_string_lossy().to_string();
                                 if !seen_paths.contains(&path_str) {
@@ -165,12 +177,9 @@ pub fn scan_application_leftovers(
                                         path: path_str,
                                         item_type: "Folder".into(),
                                         scan_level: "Safe".into(),
-                                        confidence: 0.94,
+                                        confidence: 0.95,
                                         size_bytes: size,
-                                        reason: format!(
-                                            "Heuristically matched application folder in {}",
-                                            label
-                                        ),
+                                        reason: format!("Heuristically matched application folder in {}", label),
                                         is_shared: false,
                                         eligible_for_deletion: true,
                                         selected: true,
@@ -213,7 +222,33 @@ pub fn scan_application_leftovers(
         }
     }
 
-    // 3. Start Menu Shortcuts & Folders Crawler
+    // 3. UserProfile Dot-Folders (~/.<token> e.g. ~/.android, ~/.vscode)
+    if let Ok(user_home) = std::env::var("USERPROFILE") {
+        let home_path = PathBuf::from(&user_home);
+        for token in &tokens {
+            let dot_folder = home_path.join(format!(".{}", token.to_lowercase()));
+            if dot_folder.exists() && is_safe_to_touch(&dot_folder) {
+                let path_str = dot_folder.to_string_lossy().to_string();
+                if !seen_paths.contains(&path_str) {
+                    seen_paths.insert(path_str.clone());
+                    findings.push(LeftoverItem {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        path: path_str,
+                        item_type: "Folder".into(),
+                        scan_level: "Moderate".into(),
+                        confidence: 0.93,
+                        size_bytes: dir_size(&dot_folder),
+                        reason: "User profile developer/configuration dot-folder".into(),
+                        is_shared: false,
+                        eligible_for_deletion: true,
+                        selected: scan_level != "Safe",
+                    });
+                }
+            }
+        }
+    }
+
+    // 4. Start Menu Shortcuts & Folders Crawler
     let start_menu_roots = [
         std::env::var("APPDATA")
             .map(|a| PathBuf::from(a).join(r"Microsoft\Windows\Start Menu\Programs")),
@@ -271,7 +306,7 @@ pub fn scan_application_leftovers(
         }
     }
 
-    // 4. Desktop Shortcuts Crawler
+    // 5. Desktop Shortcuts Crawler (User & Public)
     let desktop_dirs = [
         std::env::var("USERPROFILE").map(|u| PathBuf::from(u).join("Desktop")),
         std::env::var("PUBLIC").map(|p| PathBuf::from(p).join("Desktop")),
@@ -305,7 +340,44 @@ pub fn scan_application_leftovers(
         }
     }
 
-    // 5. Application CrashDumps
+    // 6. Prefetch Crawler (C:\Windows\Prefetch\<TOKEN>*.pf)
+    let prefetch_dir = PathBuf::from(r"C:\Windows\Prefetch");
+    if prefetch_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&prefetch_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    let file_low = file_name.to_lowercase();
+                    if file_low.ends_with(".pf") {
+                        for token in &tokens {
+                            let tok_low = token.to_lowercase();
+                            if file_low.starts_with(&tok_low) {
+                                let path_str = path.to_string_lossy().to_string();
+                                if !seen_paths.contains(&path_str) {
+                                    seen_paths.insert(path_str.clone());
+                                    let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                                    findings.push(LeftoverItem {
+                                        id: uuid::Uuid::new_v4().to_string(),
+                                        path: path_str,
+                                        item_type: "File".into(),
+                                        scan_level: "Moderate".into(),
+                                        confidence: 0.95,
+                                        size_bytes: size,
+                                        reason: "Windows execution trace prefetch file (.pf)".into(),
+                                        is_shared: false,
+                                        eligible_for_deletion: true,
+                                        selected: scan_level != "Safe",
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 7. Application CrashDumps
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
         let dumps_dir = PathBuf::from(&local).join("CrashDumps");
         if dumps_dir.exists() {
@@ -329,9 +401,7 @@ pub fn scan_application_leftovers(
                                         scan_level: "Safe".into(),
                                         confidence: 0.98,
                                         size_bytes: size,
-                                        reason:
-                                            "Orphaned application crash memory dump file (.dmp)"
-                                                .into(),
+                                        reason: "Orphaned application crash memory dump file (.dmp)".into(),
                                         is_shared: false,
                                         eligible_for_deletion: true,
                                         selected: true,
@@ -345,7 +415,7 @@ pub fn scan_application_leftovers(
         }
     }
 
-    // 6. Deep Registry Hive Sweep (HKCU, HKLM, HKLM 32-bit)
+    // 8. Deep Registry Hive Sweep (HKCU, HKLM, HKLM 32-bit)
     let hives = [
         (HKEY_CURRENT_USER, "HKCU", r"Software"),
         (HKEY_LOCAL_MACHINE, "HKLM", r"SOFTWARE"),
@@ -366,7 +436,7 @@ pub fn scan_application_leftovers(
                             path: reg_path,
                             item_type: "RegistryKey".into(),
                             scan_level: "Safe".into(),
-                            confidence: 0.95,
+                            confidence: 0.96,
                             size_bytes: 0,
                             reason: "Orphaned application registry configuration tree".into(),
                             is_shared: false,
@@ -378,8 +448,7 @@ pub fn scan_application_leftovers(
 
                 // Vendor: Software\<Publisher>\<Token>
                 if !is_generic_pub && !publisher.trim().is_empty() {
-                    if let Ok(pub_key) = software.open_subkey_with_flags(publisher.trim(), KEY_READ)
-                    {
+                    if let Ok(pub_key) = software.open_subkey_with_flags(publisher.trim(), KEY_READ) {
                         if let Ok(_) = pub_key.open_subkey_with_flags(token, KEY_READ) {
                             let reg_path = format!(
                                 r"{}\{}\{}\{}",
@@ -410,49 +479,48 @@ pub fn scan_application_leftovers(
         }
     }
 
-    // 7. Registry App Paths Execution Redirects
-    if let Ok(hklm) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(
-        r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
-        KEY_READ,
-    ) {
-        for token in &tokens {
-            let exe_key = format!("{}.exe", token);
-            if let Ok(_) = hklm.open_subkey_with_flags(&exe_key, KEY_READ) {
-                let reg_path = format!(
-                    r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{}",
-                    exe_key
-                );
-                if !seen_paths.contains(&reg_path) {
-                    seen_paths.insert(reg_path.clone());
-                    findings.push(LeftoverItem {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        path: reg_path,
-                        item_type: "RegistryKey".into(),
-                        scan_level: "Moderate".into(),
-                        confidence: 0.91,
-                        size_bytes: 0,
-                        reason: "Registered Windows App Path execution redirect".into(),
-                        is_shared: false,
-                        eligible_for_deletion: true,
-                        selected: scan_level != "Safe",
-                    });
+    // 9. Registry App Paths Execution Redirects (HKLM & HKCU)
+    let app_paths_hives = [
+        (HKEY_LOCAL_MACHINE, "HKLM"),
+        (HKEY_CURRENT_USER, "HKCU"),
+    ];
+    for (hive, hive_name) in &app_paths_hives {
+        if let Ok(paths_key) = RegKey::predef(*hive).open_subkey_with_flags(
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
+            KEY_READ,
+        ) {
+            for token in &tokens {
+                let exe_key = format!("{}.exe", token);
+                if let Ok(_) = paths_key.open_subkey_with_flags(&exe_key, KEY_READ) {
+                    let reg_path = format!(
+                        r"{}\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{}",
+                        hive_name, exe_key
+                    );
+                    if !seen_paths.contains(&reg_path) {
+                        seen_paths.insert(reg_path.clone());
+                        findings.push(LeftoverItem {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            path: reg_path,
+                            item_type: "RegistryKey".into(),
+                            scan_level: "Moderate".into(),
+                            confidence: 0.95,
+                            size_bytes: 0,
+                            reason: "Registered Windows App Path execution redirect".into(),
+                            is_shared: false,
+                            eligible_for_deletion: true,
+                            selected: scan_level != "Safe",
+                        });
+                    }
                 }
             }
         }
     }
 
-    // 8. Auto-Run Startup Registry Values (Run & RunOnce)
+    // 10. Auto-Run Startup Registry Values (Run & RunOnce)
     let run_hives = [
-        (
-            HKEY_CURRENT_USER,
-            "HKCU",
-            r"Software\Microsoft\Windows\CurrentVersion\Run",
-        ),
-        (
-            HKEY_LOCAL_MACHINE,
-            "HKLM",
-            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
-        ),
+        (HKEY_CURRENT_USER, "HKCU", r"Software\Microsoft\Windows\CurrentVersion\Run"),
+        (HKEY_LOCAL_MACHINE, "HKLM", r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"),
+        (HKEY_LOCAL_MACHINE, "HKLM", r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"),
     ];
 
     for (hive, hive_name, subpath) in &run_hives {
@@ -475,13 +543,87 @@ pub fn scan_application_leftovers(
                             path: reg_path,
                             item_type: "RegistryValue".into(),
                             scan_level: "Moderate".into(),
-                            confidence: 0.92,
+                            confidence: 0.94,
                             size_bytes: 0,
                             reason: "Lingering auto-start value in Windows Run registry key".into(),
                             is_shared: false,
                             eligible_for_deletion: true,
                             selected: scan_level != "Safe",
                         });
+                    }
+                }
+            }
+        }
+    }
+
+    // 11. Orphaned Windows Services Sweep (HKLM\SYSTEM\CurrentControlSet\Services)
+    if let Ok(services_key) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(
+        r"SYSTEM\CurrentControlSet\Services",
+        KEY_READ,
+    ) {
+        for s_name in services_key.enum_keys().filter_map(|x| x.ok()) {
+            if let Ok(sk) = services_key.open_subkey_with_flags(&s_name, KEY_READ) {
+                let image_path: String = sk.get_value("ImagePath").unwrap_or_default();
+                let image_low = image_path.to_lowercase();
+                let s_name_low = s_name.to_lowercase();
+
+                let matched = tokens.iter().any(|token| {
+                    let tok_low = token.to_lowercase();
+                    s_name_low.contains(&tok_low) || (!image_low.is_empty() && image_low.contains(&tok_low))
+                });
+
+                if matched && !s_name_low.starts_with("ms") && !s_name_low.starts_with("win") {
+                    let reg_path = format!(r"HKLM\SYSTEM\CurrentControlSet\Services\{}", s_name);
+                    if !seen_paths.contains(&reg_path) {
+                        seen_paths.insert(reg_path.clone());
+                        findings.push(LeftoverItem {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            path: reg_path,
+                            item_type: "RegistryKey".into(),
+                            scan_level: "Moderate".into(),
+                            confidence: 0.93,
+                            size_bytes: 0,
+                            reason: format!("Orphaned Windows background service ({})", s_name),
+                            is_shared: false,
+                            eligible_for_deletion: true,
+                            selected: scan_level != "Safe",
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 12. Orphaned Uninstall Registry Keys
+    let uninstall_hives = [
+        (HKEY_LOCAL_MACHINE, "HKLM", r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (HKEY_LOCAL_MACHINE, "HKLM (32-bit)", r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (HKEY_CURRENT_USER, "HKCU", r"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
+    ];
+
+    for (hive, hive_name, subpath) in &uninstall_hives {
+        if let Ok(uninst_key) = RegKey::predef(*hive).open_subkey_with_flags(subpath, KEY_READ) {
+            for entry_name in uninst_key.enum_keys().filter_map(|x| x.ok()) {
+                let entry_low = entry_name.to_lowercase();
+                for token in &tokens {
+                    let tok_low = token.to_lowercase();
+                    if entry_low == tok_low || entry_low.starts_with(&format!("{}_", tok_low)) {
+                        let reg_path = format!(r"{}\{}\{}", hive_name, subpath, entry_name);
+                        if !seen_paths.contains(&reg_path) {
+                            seen_paths.insert(reg_path.clone());
+                            findings.push(LeftoverItem {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                path: reg_path,
+                                item_type: "RegistryKey".into(),
+                                scan_level: "Safe".into(),
+                                confidence: 0.99,
+                                size_bytes: 0,
+                                reason: "Orphaned uninstallation registry entry".into(),
+                                is_shared: false,
+                                eligible_for_deletion: true,
+                                selected: true,
+                            });
+                        }
                     }
                 }
             }
@@ -623,6 +765,97 @@ fn dir_size(path: &Path) -> u64 {
     total
 }
 
+/// Force-deletes a single file. If locked by Windows or in use by another process,
+/// strips attributes and registers it for kernel-level deletion on reboot using Win32 MoveFileExW.
+fn force_delete_file_or_schedule(path: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    unsafe {
+        SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_NORMAL);
+    }
+
+    if fs::remove_file(path).is_ok() {
+        return Ok(());
+    }
+
+    // If immediate delete fails, schedule for kernel deletion on next reboot (Revo / IObit mechanism)
+    let res = unsafe {
+        MoveFileExW(wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT)
+    };
+
+    if res != 0 {
+        Ok(())
+    } else {
+        Err(format!("Could not remove or schedule file '{}'", path.display()))
+    }
+}
+
+/// Force-deletes a directory. If in use or containing locked files, recursively strips attributes,
+/// deletes what can be removed now, and registers the remaining locked files and the directory itself
+/// for deletion upon reboot using Win32 MoveFileExW.
+fn force_delete_folder_or_schedule(dir: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+
+    // Fast path: try normal directory removal
+    if fs::remove_dir_all(dir).is_ok() {
+        return Ok(());
+    }
+
+    // Robust path: walk contents and force-delete or schedule each file and subdirectory
+    for entry in walkdir::WalkDir::new(dir)
+        .contents_first(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let p = entry.path();
+        let wide: Vec<u16> = p
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+
+        unsafe {
+            SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_NORMAL);
+        }
+
+        if p.is_file() {
+            if fs::remove_file(p).is_err() {
+                unsafe {
+                    MoveFileExW(wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT);
+                }
+            }
+        } else if p.is_dir() {
+            if fs::remove_dir(p).is_err() {
+                unsafe {
+                    MoveFileExW(wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT);
+                }
+            }
+        }
+    }
+
+    // Schedule root directory itself if still exists
+    if dir.exists() {
+        let dir_wide: Vec<u16> = dir
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        unsafe {
+            SetFileAttributesW(dir_wide.as_ptr(), FILE_ATTRIBUTE_NORMAL);
+            if fs::remove_dir_all(dir).is_err() {
+                MoveFileExW(dir_wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn remove_leftovers_safely(items: &[LeftoverItem]) -> (usize, u64, Vec<String>) {
     let mut deleted_count = 0;
     let mut freed_bytes = 0u64;
@@ -637,7 +870,7 @@ pub fn remove_leftovers_safely(items: &[LeftoverItem]) -> (usize, u64, Vec<Strin
             "Folder" => {
                 let p = Path::new(&item.path);
                 if p.exists() && is_safe_to_touch(p) {
-                    match fs::remove_dir_all(p) {
+                    match force_delete_folder_or_schedule(p) {
                         Ok(_) => {
                             deleted_count += 1;
                             freed_bytes += item.size_bytes;
@@ -649,7 +882,7 @@ pub fn remove_leftovers_safely(items: &[LeftoverItem]) -> (usize, u64, Vec<Strin
             "File" => {
                 let p = Path::new(&item.path);
                 if p.exists() && is_safe_to_touch(p) {
-                    match fs::remove_file(p) {
+                    match force_delete_file_or_schedule(p) {
                         Ok(_) => {
                             deleted_count += 1;
                             freed_bytes += item.size_bytes;

@@ -826,6 +826,145 @@ export const ApplicationIcon: React.FC<ApplicationIconProps> = ({
     );
   }
 
+  // Windows Media & Communication
+  if (normName.includes('photo')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#0078D7]/15 border border-[#0078D7]/30 flex-shrink-0 shadow-sm text-[#0078D7] ${className}`}>
+        <Palette className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  if (normName.includes('media player') || normName.includes('zune') || normName.includes('films & tv')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#EA005E]/15 border border-[#EA005E]/30 flex-shrink-0 shadow-sm text-[#EA005E] ${className}`}>
+        <Play className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  if (normName.includes('phone') || normName.includes('yourphone')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#0078D7]/15 border border-[#0078D7]/30 flex-shrink-0 shadow-sm text-[#0078D7] ${className}`}>
+        <MessageSquare className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  if (normName.includes('sticky')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#FFB900]/15 border border-[#FFB900]/30 flex-shrink-0 shadow-sm text-[#FFB900] ${className}`}>
+        <FileText className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  // Utilities: Revo, Android Studio, GIGABYTE, IDM, Wondershare, Moho
+  if (normName.includes('revo')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#0080FF]/15 border border-[#0080FF]/30 flex-shrink-0 shadow-sm text-[#0080FF] ${className}`}>
+        <Layers className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  if (normName.includes('android')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#3DDC84]/15 border border-[#3DDC84]/30 flex-shrink-0 shadow-sm text-[#3DDC84] ${className}`}>
+        <Compass className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  if (normName.includes('gigabyte') || normName.includes('gbt_')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#FA6400]/15 border border-[#FA6400]/30 flex-shrink-0 shadow-sm text-[#FA6400] font-black text-xs ${className}`}>
+        <span>GCC</span>
+      </div>
+    );
+  }
+
+  if (normName.includes('internet download manager') || normName.includes('idman') || normName === 'idm') {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#00A859]/15 border border-[#00A859]/30 flex-shrink-0 shadow-sm text-[#00A859] font-black text-xs ${className}`}>
+        <span>IDM</span>
+      </div>
+    );
+  }
+
+  if (normName.includes('filmora')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#00E5FF]/15 border border-[#00E5FF]/30 flex-shrink-0 shadow-sm text-[#00E5FF] ${className}`}>
+        <Film className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  if (normName.includes('pdfelement') || normName.includes('wondershare')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#0052D9]/15 border border-[#0052D9]/30 flex-shrink-0 shadow-sm text-[#0052D9] ${className}`}>
+        <FileText className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  if (normName.includes('moho')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#FF4500]/15 border border-[#FF4500]/30 flex-shrink-0 shadow-sm text-[#FF4500] ${className}`}>
+        <Sparkles className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  // AI & Developer tools
+  if (normName.includes('deepseek')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#0066FF]/15 border border-[#0066FF]/30 flex-shrink-0 shadow-sm text-[#0066FF] ${className}`}>
+        <Boxes className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  if (normName.includes('antigravity')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#6366F1]/15 border border-[#6366F1]/30 flex-shrink-0 shadow-sm text-[#6366F1] ${className}`}>
+        <Sparkles className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  if (normName.includes('opencode')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#10B981]/15 border border-[#10B981]/30 flex-shrink-0 shadow-sm text-[#10B981] ${className}`}>
+        <Code2 className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  if (normName.includes('claude')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#CC785C]/15 border border-[#CC785C]/30 flex-shrink-0 shadow-sm text-[#CC785C] ${className}`}>
+        <Sparkles className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  if (normName.includes('copilot') || normName.includes('officehub')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#2563EB]/15 border border-[#2563EB]/30 flex-shrink-0 shadow-sm text-[#2563EB] ${className}`}>
+        <Sparkles className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
+  if (normName.includes('msys') || normName.includes('winlibs') || normName.includes('mingw') || normName.includes('rustup')) {
+    return (
+      <div className={`${containerSizes[size]} flex items-center justify-center bg-[#E11D48]/15 border border-[#E11D48]/30 flex-shrink-0 shadow-sm text-[#E11D48] ${className}`}>
+        <Wrench className="w-4/5 h-4/5" />
+      </div>
+    );
+  }
+
   // --- 3. SMART CATEGORY DETECTION FALLBACK ---
   if (normName.includes('driver') || normName.includes('audio') || normName.includes('chipset') || normName.includes('realtek')) {
     return (

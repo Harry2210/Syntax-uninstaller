@@ -448,62 +448,74 @@ pub fn extract_appx_icon(install_location: &str) -> Option<String> {
         return None;
     }
 
-    let assets_dir = p.join("Assets");
-    let search_dir = if assets_dir.exists() {
-        assets_dir
-    } else {
-        p.to_path_buf()
-    };
+    let mut search_dirs = Vec::new();
+    let subdirs = ["Assets", "assets", "images", "Images", "res", "resources"];
+    for sub in &subdirs {
+        let sub_path = p.join(sub);
+        if sub_path.exists() {
+            search_dirs.push(sub_path);
+        }
+    }
+    search_dirs.push(p.to_path_buf());
 
-    // Find best PNG matching AppList or Logo
-    if let Ok(entries) = fs::read_dir(&search_dir) {
-        let mut candidates: Vec<(PathBuf, u32)> = Vec::new();
+    let mut candidates: Vec<(PathBuf, u32)> = Vec::new();
 
-        for entry in entries.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if path
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.eq_ignore_ascii_case("png"))
-                .unwrap_or(false)
-            {
-                let file_name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-
-                // Skip high-contrast or tiny 16px assets
-                if file_name.contains("contrast")
-                    || file_name.contains("targetsize-16")
-                    || file_name.contains("targetsize-24")
+    for dir in &search_dirs {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.eq_ignore_ascii_case("png"))
+                    .unwrap_or(false)
                 {
-                    continue;
-                }
+                    let file_name = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
 
-                let mut score = 0u32;
-                if file_name.contains("applist") {
-                    score += 100;
-                }
-                if file_name.contains("square44x44") {
-                    score += 80;
-                }
-                if file_name.contains("logo") {
-                    score += 60;
-                }
-                if file_name.contains("scale-200") {
-                    score += 40;
-                } else if file_name.contains("scale-150") || file_name.contains("scale-100") {
-                    score += 20;
-                }
-                if file_name.contains("targetsize-48") || file_name.contains("targetsize-256") {
-                    score += 30;
-                }
+                    // Skip high-contrast or tiny 16px assets
+                    if file_name.contains("contrast")
+                        || file_name.contains("targetsize-16")
+                        || file_name.contains("targetsize-24")
+                    {
+                        continue;
+                    }
 
-                candidates.push((path, score));
+                    let mut score = 0u32;
+                    if file_name.contains("applist") {
+                        score += 120;
+                    }
+                    if file_name.contains("square44x44") {
+                        score += 100;
+                    }
+                    if file_name.contains("square150x150") {
+                        score += 90;
+                    }
+                    if file_name.contains("logo") {
+                        score += 70;
+                    }
+                    if file_name.contains("storelogo") {
+                        score += 65;
+                    }
+                    if file_name.contains("scale-200") {
+                        score += 40;
+                    } else if file_name.contains("scale-150") || file_name.contains("scale-100") {
+                        score += 20;
+                    }
+                    if file_name.contains("targetsize-48") || file_name.contains("targetsize-256") {
+                        score += 30;
+                    }
+
+                    candidates.push((path, score));
+                }
             }
         }
+    }
 
+    if !candidates.is_empty() {
         candidates.sort_by(|a, b| b.1.cmp(&a.1));
         if let Some((best_path, _)) = candidates.first() {
             if let Ok(bytes) = fs::read(best_path) {

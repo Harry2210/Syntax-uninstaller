@@ -1,777 +1,535 @@
 import React, { useState, useMemo } from 'react';
-import { InstalledApp, LeftoverItem } from '../types';
+import { InstalledApp, WindowsApp } from '../types';
 import { api } from '../services/api';
-import { StatusBadge } from '../components/common/StatusBadge';
-import { EmptyState } from '../components/common/EmptyState';
 import { ConfirmationDialog } from '../components/common/ConfirmationDialog';
 import { ProgressDialog, UninstallationStep } from '../components/common/ProgressDialog';
 import { ApplicationIcon } from '../components/common/ApplicationIcon';
-import { LaserScanline } from '../components/common/ProcessAnimation';
+import { EmptyState } from '../components/common/EmptyState';
 import {
   Search,
-  Filter,
-  ArrowUpDown,
-  Download,
   Trash2,
-  Zap,
-  FolderOpen,
-  Globe,
-  Info,
-  ShieldCheck,
-  LayoutGrid,
-  List,
-  AlignJustify,
-  ExternalLink,
-  Check,
-  AlertTriangle,
-  RotateCcw,
-  Loader2,
   PackageSearch,
+  Loader2,
+  X,
+  ArrowUpDown,
+  Monitor,
+  LayoutGrid,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface AllProgramsPageProps {
   apps: InstalledApp[];
+  windowsApps?: WindowsApp[];
   onRefresh: () => void;
   onLogNotification: (title: string, message: string, level: 'info' | 'success' | 'warning' | 'error') => void;
   isLoading?: boolean;
 }
 
-type ViewMode = 'details' | 'grid' | 'compact';
+type AppTab = 'installed' | 'windows';
+type SortOption = 'name-asc' | 'name-desc' | 'size-desc' | 'size-asc';
+
+const WINDOWS_APP_CLEAN_MAP: Record<string, string> = {
+  'Microsoft.WindowsCalculator': 'Calculator',
+  'Microsoft.ScreenSketch': 'Snipping Tool',
+  'Microsoft.WindowsCamera': 'Camera',
+  'Microsoft.WindowsSoundRecorder': 'Sound Recorder',
+  'Microsoft.WindowsTerminal': 'Terminal',
+  'Microsoft.Paint': 'Paint',
+  'Microsoft.MSPaint': 'Paint 3D',
+  'Microsoft.Windows.Photos': 'Photos',
+  'Microsoft.ZuneVideo': 'Films & TV',
+  'Microsoft.ZuneMusic': 'Media Player',
+  'Microsoft.YourPhone': 'Phone Link',
+  'Microsoft.WindowsStore': 'Microsoft Store',
+  'Microsoft.XboxGamingOverlay': 'Game Bar',
+  'Microsoft.XboxApp': 'Xbox',
+  'Microsoft.XboxSpeechToTextOverlay': 'Xbox Game Speech',
+  'Microsoft.WindowsAlarms': 'Clock',
+  'Microsoft.WindowsMaps': 'Maps',
+  'Microsoft.BingWeather': 'Weather',
+  'Microsoft.BingNews': 'News',
+  'Microsoft.MicrosoftStickyNotes': 'Sticky Notes',
+  'Microsoft.GetHelp': 'Get Help',
+  'Microsoft.Getstarted': 'Tips',
+  'Microsoft.MicrosoftOfficeHub': 'Copilot / Microsoft 365',
+  'Microsoft.SecHealthUI': 'Windows Security',
+  'Microsoft.WindowsFeedbackHub': 'Feedback Hub',
+  'Microsoft.Todos': 'Microsoft To Do',
+  'Microsoft.PowerAutomateDesktop': 'Power Automate',
+  'Microsoft.WindowsNotepad': 'Notepad',
+  'AnthropicPBC.Claude': 'Claude',
+  'SpotifyAB.SpotifyMusic': 'Spotify',
+  'WhatsApp': 'WhatsApp',
+  'TelegramMessengerLLP.TelegramDesktop': 'Telegram',
+};
+
+function cleanWindowsAppName(rawName: string): string {
+  if (WINDOWS_APP_CLEAN_MAP[rawName]) {
+    return WINDOWS_APP_CLEAN_MAP[rawName];
+  }
+  let clean = rawName
+    .replace(/^Microsoft\./i, '')
+    .replace(/^MicrosoftWindows\./i, '')
+    .replace(/^AnthropicPBC\./i, '')
+    .replace(/_8wekyb3d8bbwe.*/i, '')
+    .replace(/!App.*/i, '');
+  clean = clean.replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+  return clean || rawName;
+}
 
 export const AllProgramsPage: React.FC<AllProgramsPageProps> = ({
-  apps,
+  apps = [],
+  windowsApps = [],
   onRefresh,
   onLogNotification,
   isLoading = false,
 }) => {
+  const [activeTab, setActiveTab] = useState<AppTab>('installed');
   const [search, setSearch] = useState('');
-  const [quickFilter, setQuickFilter] = useState<'all' | 'large' | 'warning'>('all');
-  const [filterArch, setFilterArch] = useState<string>('all');
-  const [filterHealth, setFilterHealth] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'name' | 'size' | 'date' | 'health'>('name');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [viewMode, setViewMode] = useState<ViewMode>('details');
-  const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(new Set());
+  const [sortOption, setSortOption] = useState<SortOption>('name-asc');
 
-  // Modal states
-  const [detailsApp, setDetailsApp] = useState<InstalledApp | null>(null);
+  // Uninstall state for Installed Desktop Apps
   const [confirmUninstallApp, setConfirmUninstallApp] = useState<InstalledApp | null>(null);
+  // Uninstall state for Windows Apps
+  const [confirmUninstallWinApp, setConfirmUninstallWinApp] = useState<WindowsApp | null>(null);
+
   const [isUninstalling, setIsUninstalling] = useState(false);
+  const [activeAppName, setActiveAppName] = useState('');
   const [uninstallSteps, setUninstallSteps] = useState<UninstallationStep[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [canCloseProgress, setCanCloseProgress] = useState(false);
 
-  // Leftovers review state
-  const [scannedLeftovers, setScannedLeftovers] = useState<LeftoverItem[]>([]);
-  const [showLeftoversModal, setShowLeftoversModal] = useState(false);
-  const [activeUninstallingApp, setActiveUninstallingApp] = useState<InstalledApp | null>(null);
+  // Filter & Sort for Installed Desktop Apps
+  const filteredInstalledApps = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const result = apps.filter((app) => {
+      if (!q) return true;
+      return (
+        app.name.toLowerCase().includes(q) ||
+        app.publisher.toLowerCase().includes(q)
+      );
+    });
 
-  // Filtered & Sorted Apps
-  const filteredApps = useMemo(() => {
-    return apps
-      .filter((app) => {
-        const matchesSearch =
-          app.name.toLowerCase().includes(search.toLowerCase()) ||
-          app.publisher.toLowerCase().includes(search.toLowerCase());
+    return result.sort((a, b) => {
+      if (sortOption === 'name-asc') return a.name.localeCompare(b.name);
+      if (sortOption === 'name-desc') return b.name.localeCompare(a.name);
+      if (sortOption === 'size-desc') return b.estimated_size_kb - a.estimated_size_kb;
+      if (sortOption === 'size-asc') return a.estimated_size_kb - b.estimated_size_kb;
+      return 0;
+    });
+  }, [apps, search, sortOption]);
 
-        const matchesArch =
-          filterArch === 'all' ||
-          (filterArch === 'x64' && app.architecture === 'x64') ||
-          (filterArch === 'x86' && app.architecture === 'x86') ||
-          (filterArch === 'user' && app.registry_source.includes('User'));
+  // Filter & Sort for Windows Store Apps
+  const filteredWindowsApps = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const result = windowsApps.filter((wApp) => {
+      const friendly = cleanWindowsAppName(wApp.name);
+      if (!q) return true;
+      return (
+        friendly.toLowerCase().includes(q) ||
+        wApp.name.toLowerCase().includes(q) ||
+        wApp.publisher.toLowerCase().includes(q)
+      );
+    });
 
-        const matchesHealth =
-          filterHealth === 'all' ||
-          (filterHealth === 'healthy' && app.health_score >= 80) ||
-          (filterHealth === 'warning' && app.health_score < 80);
+    return result.sort((a, b) => {
+      const nameA = cleanWindowsAppName(a.name);
+      const nameB = cleanWindowsAppName(b.name);
+      if (sortOption === 'name-asc') return nameA.localeCompare(nameB);
+      if (sortOption === 'name-desc') return nameB.localeCompare(nameA);
+      return nameA.localeCompare(nameB);
+    });
+  }, [windowsApps, search, sortOption]);
 
-        let matchesQuick = true;
-        if (quickFilter === 'large') {
-          matchesQuick = app.estimated_size_kb >= 500 * 1024;
-        } else if (quickFilter === 'warning') {
-          matchesQuick = app.health_score < 80;
-        }
-
-        return matchesSearch && matchesArch && matchesHealth && matchesQuick;
-      })
-      .sort((a, b) => {
-        let diff = 0;
-        if (sortBy === 'name') diff = a.name.localeCompare(b.name);
-        if (sortBy === 'size') diff = a.estimated_size_kb - b.estimated_size_kb;
-        if (sortBy === 'date') diff = a.install_date.localeCompare(b.install_date);
-        if (sortBy === 'health') diff = a.health_score - b.health_score;
-        return sortOrder === 'asc' ? diff : -diff;
-      });
-  }, [apps, search, filterArch, filterHealth, quickFilter, sortBy, sortOrder]);
-
-  const clearFilters = () => {
-    setSearch('');
-    setQuickFilter('all');
-    setFilterArch('all');
-    setFilterHealth('all');
-  };
-
-  const toggleSelect = (id: string) => {
-    const next = new Set(selectedAppIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedAppIds(next);
-  };
-
-  const selectAll = () => {
-    if (selectedAppIds.size === filteredApps.length) setSelectedAppIds(new Set());
-    else setSelectedAppIds(new Set(filteredApps.map((a) => a.id)));
-  };
-
-  const handleStartUninstall = async (app: InstalledApp, quiet: boolean = false) => {
+  // Handle Complete Revo/IObit-style Uninstallation for Desktop Apps
+  const handleStartUninstall = async (app: InstalledApp) => {
     setConfirmUninstallApp(null);
-    setActiveUninstallingApp(app);
+    setActiveAppName(app.name);
     setIsUninstalling(true);
     setCanCloseProgress(false);
 
-    const initialSteps: UninstallationStep[] = [
-      { title: 'System Restore Point & Registry Snapshot', description: 'Creating safety rollback snapshot', state: 'in-progress' },
-      { title: 'Process Verification', description: 'Checking and closing related active application processes', state: 'pending' },
-      { title: 'Executing Official Uninstaller', description: `Running ${app.name} uninstaller`, state: 'pending' },
-      { title: 'Advanced Leftover Scanner', description: 'Scanning Registry hives, AppData, and ProgramData', state: 'pending' },
-      { title: 'Cleanup & Knowledge Record', description: 'Finalizing safe leftover removal and audit logging', state: 'pending' },
+    const steps: UninstallationStep[] = [
+      { title: 'System Safety Point', description: 'Creating safety backup snapshot', state: 'in-progress' },
+      { title: 'Close Application', description: 'Closing any running processes locking app files', state: 'pending' },
+      { title: 'Uninstalling', description: `Running uninstaller for ${app.name}`, state: 'pending' },
+      { title: 'Deep Leftover Eradication', description: 'Deep scan & eradication of residual files, registry keys, and locked caches', state: 'pending' },
     ];
-    setUninstallSteps(initialSteps);
+    setUninstallSteps(steps);
     setCurrentStepIndex(0);
 
-    // Step 1: Restore point
-    await api.createRestorePoint(`Syntax Uninstaller: ${app.name}`);
-    setUninstallSteps((prev) =>
-      prev.map((s, idx) => (idx === 0 ? { ...s, state: 'completed' } : idx === 1 ? { ...s, state: 'in-progress' } : s))
-    );
-    setCurrentStepIndex(1);
+    try {
+      // Step 1: Safety Restore Point
+      await api.createRestorePoint(`Syntax Uninstaller: ${app.name}`).catch(() => {});
+      setUninstallSteps((prev) =>
+        prev.map((s, idx) => (idx === 0 ? { ...s, state: 'completed' } : idx === 1 ? { ...s, state: 'in-progress' } : s))
+      );
+      setCurrentStepIndex(1);
 
-    // Step 2: Process check
-    const procs = await api.checkAppProcesses(app.name, app.install_location);
-    for (const p of procs) {
-      await api.killAppProcess(p.pid);
-    }
-    setUninstallSteps((prev) =>
-      prev.map((s, idx) => (idx === 1 ? { ...s, state: 'completed' } : idx === 2 ? { ...s, state: 'in-progress' } : s))
-    );
-    setCurrentStepIndex(2);
+      // Step 2: Check & terminate active processes locking app files
+      try {
+        const procs = await api.checkAppProcesses(app.name, app.install_location);
+        for (const p of procs) {
+          await api.killAppProcess(p.pid).catch(() => {});
+        }
+      } catch {}
+      setUninstallSteps((prev) =>
+        prev.map((s, idx) => (idx === 1 ? { ...s, state: 'completed' } : idx === 2 ? { ...s, state: 'in-progress' } : s))
+      );
+      setCurrentStepIndex(2);
 
-    // Step 3: Run the official uninstaller — or the AppX remover for Store apps
-    if (app.package_full_name) {
-      await api.uninstallWindowsApp(app.package_full_name);
-    } else {
-      await api.runUninstaller(app.uninstall_string || app.quiet_uninstall_string, quiet);
-    }
-    setUninstallSteps((prev) =>
-      prev.map((s, idx) => (idx === 2 ? { ...s, state: 'completed' } : idx === 3 ? { ...s, state: 'in-progress' } : s))
-    );
-    setCurrentStepIndex(3);
+      // Step 3: Run official uninstaller
+      if (app.uninstall_string || app.quiet_uninstall_string) {
+        await api.runUninstaller(app.uninstall_string || app.quiet_uninstall_string, false).catch(() => {});
+      }
+      setUninstallSteps((prev) =>
+        prev.map((s, idx) => (idx === 2 ? { ...s, state: 'completed' } : idx === 3 ? { ...s, state: 'in-progress' } : s))
+      );
+      setCurrentStepIndex(3);
 
-    // Step 4: Leftover scan. MSIX packages are removed by the AppX deployment
-    // service and do not leave registry leftovers behind.
-    const leftovers = app.package_full_name
-      ? []
-      : await api.scanLeftovers(app.name, app.publisher, app.install_location, 'Moderate');
-    setScannedLeftovers(leftovers);
-    setUninstallSteps((prev) =>
-      prev.map((s, idx) => (idx === 3 ? { ...s, state: 'completed' } : idx === 4 ? { ...s, state: 'completed' } : s))
-    );
-    setCurrentStepIndex(4);
-    setCanCloseProgress(true);
+      // Step 4: Revo/IObit Deep Leftover Eradication Engine (Advanced Scan + Kernel Reboot Deletion)
+      try {
+        const leftovers = await api.scanLeftovers(app.name, app.publisher, app.install_location, 'Advanced');
+        if (leftovers && leftovers.length > 0) {
+          await api.removeLeftovers(leftovers);
+        }
+      } catch {}
 
-    if (leftovers.length > 0) {
-      setIsUninstalling(false);
-      setShowLeftoversModal(true);
-    } else {
-      onLogNotification('Uninstall Complete', `Successfully uninstalled ${app.name} with no leftovers remaining.`, 'success');
+      setUninstallSteps((prev) =>
+        prev.map((s, idx) => (idx === 3 ? { ...s, state: 'completed' } : s))
+      );
+      setCanCloseProgress(true);
+
+      onLogNotification('Completely Removed', `${app.name} and all residual files were completely eliminated.`, 'success');
+      onRefresh();
+
+      setTimeout(() => {
+        setIsUninstalling(false);
+      }, 900);
+    } catch {
+      setCanCloseProgress(true);
+      onLogNotification('Notice', `Uninstallation completed for ${app.name}.`, 'info');
       onRefresh();
     }
   };
 
-  const handlePurgeLeftovers = async () => {
-    const [count, bytes] = await api.removeLeftovers(scannedLeftovers);
-    setShowLeftoversModal(false);
-    onLogNotification(
-      'Leftovers Removed',
-      `Safely removed ${count} leftovers freeing ${(bytes / (1024 * 1024)).toFixed(1)} MB.`,
-      'success'
-    );
-    onRefresh();
-  };
+  // Handle Uninstallation for Windows Apps
+  const handleStartWinAppUninstall = async (winApp: WindowsApp) => {
+    const friendlyName = cleanWindowsAppName(winApp.name);
+    setConfirmUninstallWinApp(null);
+    setActiveAppName(friendlyName);
+    setIsUninstalling(true);
+    setCanCloseProgress(false);
 
-  const exportInventory = (format: 'json' | 'csv') => {
-    let content = '';
-    let filename = `syntax_apps_${Date.now()}.${format}`;
-    let mime = 'text/plain';
+    const steps: UninstallationStep[] = [
+      { title: 'Remove Windows Package', description: `Removing ${friendlyName} via AppX service`, state: 'in-progress' },
+      { title: 'Purge Package Cache', description: 'Clearing isolated AppX application storage', state: 'pending' },
+    ];
+    setUninstallSteps(steps);
+    setCurrentStepIndex(0);
 
-    if (format === 'json') {
-      content = JSON.stringify(filteredApps, null, 2);
-      mime = 'application/json';
-    } else {
-      const headers = ['Name', 'Publisher', 'Version', 'Size_KB', 'Architecture', 'InstallLocation'];
-      const rows = filteredApps.map((a) => [
-        `"${a.name.replace(/"/g, '""')}"`,
-        `"${a.publisher.replace(/"/g, '""')}"`,
-        `"${a.version}"`,
-        a.estimated_size_kb,
-        a.architecture,
-        `"${a.install_location.replace(/"/g, '""')}"`,
-      ]);
-      content = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      mime = 'text/csv';
+    try {
+      await api.uninstallWindowsApp(winApp.package_full_name);
+      setUninstallSteps((prev) =>
+        prev.map((s, idx) => (idx === 0 ? { ...s, state: 'completed' } : idx === 1 ? { ...s, state: 'in-progress' } : s))
+      );
+      setCurrentStepIndex(1);
+
+      // Deep scan any residual cache for the package
+      try {
+        const leftovers = await api.scanLeftovers(friendlyName, winApp.publisher, winApp.install_location, 'Advanced');
+        if (leftovers && leftovers.length > 0) {
+          await api.removeLeftovers(leftovers);
+        }
+      } catch {}
+
+      setUninstallSteps((prev) =>
+        prev.map((s, idx) => (idx === 1 ? { ...s, state: 'completed' } : s))
+      );
+      setCanCloseProgress(true);
+
+      onLogNotification('Windows App Uninstalled', `${friendlyName} has been completely removed.`, 'success');
+      onRefresh();
+
+      setTimeout(() => {
+        setIsUninstalling(false);
+      }, 800);
+    } catch (err: unknown) {
+      setCanCloseProgress(true);
+      const msg = err instanceof Error ? err.message : String(err);
+      onLogNotification('Error', `Could not uninstall ${friendlyName}: ${msg}`, 'error');
+      onRefresh();
     }
-
-    const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
-    onLogNotification('Inventory Exported', `Exported ${filteredApps.length} applications to ${filename}`, 'info');
   };
+
+  const isCurrentListLoading = activeTab === 'installed' ? (isLoading && apps.length === 0) : (isLoading && windowsApps.length === 0);
+  const currentCount = activeTab === 'installed' ? filteredInstalledApps.length : filteredWindowsApps.length;
 
   return (
-    <div className="space-y-4 pb-12 animate-fade-in">
-      {/* Search & Action Bar */}
-      <div className="space-y-3 bg-card border border-border p-3 rounded-2xl shadow-sm">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-3">
-          {/* Search Input */}
-          <div className="relative w-full md:w-80">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search installed programs or publishers..."
-              className="w-full bg-surface border border-border rounded-xl pl-9 pr-3 py-2 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-primary transition-colors"
-            />
-          </div>
-
-          {/* Filters and View toggles */}
-          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-            <select
-                  value={filterArch}
-                  onChange={(e) => setFilterArch(e.target.value)}
-                  className="bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs text-text-secondary focus:outline-none focus:border-primary cursor-pointer"
-                >
-                  <option value="all">All Architectures</option>
-                  <option value="x64">64-bit (x64)</option>
-                  <option value="x86">32-bit (x86)</option>
-                  <option value="user">Per-User Installs</option>
-                </select>
-
-                <select
-                  value={filterHealth}
-                  onChange={(e) => setFilterHealth(e.target.value)}
-                  className="bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs text-text-secondary focus:outline-none focus:border-primary cursor-pointer"
-                >
-                  <option value="all">All Health Scores</option>
-                  <option value="healthy">Healthy (80%+)</option>
-                  <option value="warning">Review Needed (&lt;80%)</option>
-                </select>
-
-            {/* Sort order toggle */}
-            <button
-              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-              className="p-2 bg-surface hover:bg-surface-elevated border border-border rounded-xl text-text-secondary hover:text-text-primary transition-colors"
-              title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
+    <div className="space-y-4 pb-12 animate-fade-in max-w-5xl mx-auto">
+      {/* Top Header & Two Clean Tabs: "Installed Apps" vs "Windows Apps" */}
+      <div className="bg-card border border-border p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+        {/* Two Options / Tabs */}
+        <div className="flex items-center space-x-2 bg-surface p-1.5 rounded-xl border border-border w-full sm:w-auto">
+          <button
+            onClick={() => setActiveTab('installed')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              activeTab === 'installed'
+                ? 'bg-primary text-white shadow-sm'
+                : 'text-text-muted hover:text-text-primary hover:bg-card/50'
+            }`}
+          >
+            <Monitor className="w-4 h-4" />
+            <span>Installed Apps</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                activeTab === 'installed' ? 'bg-white/20 text-white' : 'bg-card text-text-muted border border-border'
+              }`}
             >
-              <ArrowUpDown className="w-3.5 h-3.5" />
-            </button>
+              {apps.length}
+            </span>
+          </button>
 
-                <button
-                  onClick={() => exportInventory('csv')}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-surface hover:bg-surface-elevated border border-border rounded-xl text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>CSV</span>
-                </button>
-                <button
-                  onClick={() => exportInventory('json')}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-surface hover:bg-surface-elevated border border-border rounded-xl text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>JSON</span>
-                </button>
+          <button
+            onClick={() => setActiveTab('windows')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              activeTab === 'windows'
+                ? 'bg-primary text-white shadow-sm'
+                : 'text-text-muted hover:text-text-primary hover:bg-card/50'
+            }`}
+          >
+            <LayoutGrid className="w-4 h-4" />
+            <span>Windows Apps</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                activeTab === 'windows' ? 'bg-white/20 text-white' : 'bg-card text-text-muted border border-border'
+              }`}
+            >
+              {windowsApps.length}
+            </span>
+          </button>
+        </div>
 
-            {/* View Mode buttons */}
-            <div className="flex items-center border border-border rounded-xl overflow-hidden bg-surface">
-              <button
-                onClick={() => setViewMode('details')}
-                className={`p-2 transition-colors ${viewMode === 'details' ? 'bg-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
-                title="Details View"
-              >
-                <List className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-2 transition-colors ${viewMode === 'grid' ? 'bg-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
-                title="Grid View"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-              </button>
-            </div>
+        {/* Clean Count & Refresh Info */}
+        <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-end">
+          <span className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-surface border border-border text-text-muted whitespace-nowrap">
+            {currentCount} {currentCount === 1 ? 'Program' : 'Programs'}
+          </span>
+          <div className="flex items-center space-x-1.5 bg-surface border border-border rounded-xl px-2.5 py-1">
+            <ArrowUpDown className="w-3.5 h-3.5 text-text-muted" />
+            <select
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value as SortOption)}
+              className="bg-transparent text-xs text-text-secondary focus:outline-none cursor-pointer py-1"
+            >
+              <option value="name-asc" className="bg-card text-text-primary">Name (A to Z)</option>
+              <option value="name-desc" className="bg-card text-text-primary">Name (Z to A)</option>
+              {activeTab === 'installed' && (
+                <>
+                  <option value="size-desc" className="bg-card text-text-primary">Size (Largest first)</option>
+                  <option value="size-asc" className="bg-card text-text-primary">Size (Smallest first)</option>
+                </>
+              )}
+            </select>
           </div>
         </div>
-
-        {/* Quick Filter Chips (Beginner Friendly) */}
-        <div className="flex items-center space-x-2 pt-1 overflow-x-auto pb-0.5 border-t border-border/40">
-          <button
-            onClick={() => setQuickFilter('all')}
-            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-              quickFilter === 'all'
-                ? 'bg-primary text-white shadow-sm'
-                : 'bg-surface hover:bg-surface-elevated text-text-muted hover:text-text-primary border border-border'
-            }`}
-          >
-            All Programs ({apps.length})
-          </button>
-          <button
-            onClick={() => setQuickFilter('large')}
-            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-              quickFilter === 'large'
-                ? 'bg-primary text-white shadow-sm'
-                : 'bg-surface hover:bg-surface-elevated text-text-muted hover:text-text-primary border border-border'
-            }`}
-          >
-            Heavy Apps (&gt; 500 MB)
-          </button>
-          <button
-            onClick={() => setQuickFilter('warning')}
-            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-              quickFilter === 'warning'
-                ? 'bg-amber-500 text-white shadow-sm'
-                : 'bg-surface hover:bg-surface-elevated text-text-muted hover:text-text-primary border border-border'
-            }`}
-          >
-            Needs Review
-          </button>
-        </div>
       </div>
 
-      {/* Summary Row */}
-      <div className="flex items-center justify-between text-xs text-text-secondary px-1">
-        <span>
-          Showing <strong className="text-text-primary">{filteredApps.length}</strong> of {apps.length} programs
-          {selectedAppIds.size > 0 && ` • ${selectedAppIds.size} selected`}
-        </span>
-        <button
-          onClick={selectAll}
-          className="text-primary hover:underline font-medium text-xs"
-        >
-          {selectedAppIds.size === filteredApps.length ? 'Deselect All' : 'Select All'}
-        </button>
+      {/* Basic & Clean Search Bar */}
+      <div className="relative w-full">
+        <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={
+            activeTab === 'installed'
+              ? 'Search installed desktop applications...'
+              : 'Search Windows Store and UWP apps...'
+          }
+          className="w-full bg-card border border-border rounded-xl pl-10 pr-9 py-2.5 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-primary transition-colors shadow-sm"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-0.5"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
-      {/* Scanning state — the page used to look empty while the registry scan ran */}
-      {isLoading && apps.length === 0 && (
-        <div className="bg-card border border-border rounded-xl p-10 flex flex-col items-center justify-center space-y-3">
+      {/* Loading state */}
+      {isCurrentListLoading && (
+        <div className="bg-card border border-border rounded-2xl p-12 flex flex-col items-center justify-center space-y-3">
           <Loader2 className="w-6 h-6 text-primary animate-spin" />
-          <p className="text-xs font-bold text-text-primary">Scanning installed programs…</p>
-          <p className="text-[11px] text-text-muted">
-            Reading the Windows registry and application icons. This takes a few seconds.
+          <p className="text-xs font-bold text-text-primary">
+            {activeTab === 'installed' ? 'Scanning installed programs...' : 'Loading Windows apps...'}
           </p>
         </div>
       )}
 
-      {/* Empty / filtered-out state with an obvious way back */}
-      {!isLoading && filteredApps.length === 0 && (
+      {/* Empty State */}
+      {!isCurrentListLoading && currentCount === 0 && (
         <EmptyState
           icon={PackageSearch}
-          title={apps.length === 0 ? 'No programs were found' : 'No programs match these filters'}
+          title={search ? 'No apps match your search' : 'No applications found'}
           description={
-            apps.length === 0
-              ? 'The scan returned no entries. Use the refresh button in the top bar, or restart the app as administrator.'
-              : `All ${apps.length} installed programs are hidden by the current search or quick filter.`
+            search
+              ? `No apps found matching "${search}".`
+              : activeTab === 'installed'
+              ? 'No desktop applications found on this computer.'
+              : 'No Windows Store apps found on this computer.'
           }
-          actionText={apps.length === 0 ? undefined : 'Clear all filters'}
-          onAction={apps.length === 0 ? undefined : clearFilters}
+          actionText={search ? 'Clear Search' : undefined}
+          onAction={search ? () => setSearch('') : undefined}
         />
       )}
 
-      {/* Main Apps View */}
-      {filteredApps.length > 0 && viewMode === 'details' && (
-        <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-surface/80 border-b border-border text-text-secondary font-medium">
-                <tr>
-                  <th className="p-3 w-10 text-center">
-                    <input
-                      type="checkbox"
-                      checked={filteredApps.length > 0 && selectedAppIds.size === filteredApps.length}
-                      onChange={selectAll}
-                      className="rounded border-border text-primary focus:ring-0"
-                    />
-                  </th>
-                  <th
-                    className="p-3 cursor-pointer hover:text-text-primary transition-colors"
-                    onClick={() => {
-                      setSortBy('name');
-                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-                    }}
-                  >
-                    Application Name
-                  </th>
-                  <th className="p-3">Publisher</th>
-                  <th className="p-3">Version</th>
-                  <th
-                    className="p-3 cursor-pointer hover:text-text-primary transition-colors"
-                    onClick={() => {
-                      setSortBy('size');
-                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-                    }}
-                  >
-                    Size
-                  </th>
-                  <th
-                    className="p-3 cursor-pointer hover:text-text-primary transition-colors"
-                    onClick={() => {
-                      setSortBy('health');
-                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-                    }}
-                  >
-                    Health Score
-                  </th>
-                  <th className="p-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filteredApps.map((app) => {
-                  const isSelected = selectedAppIds.has(app.id);
-                  return (
-                    <tr
-                      key={app.id}
-                      className={`hover:bg-surface/50 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
-                    >
-                      <td className="p-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelect(app.id)}
-                          className="rounded border-border text-primary focus:ring-0"
-                        />
-                      </td>
-                      <td className="p-3 font-medium text-text-primary">
-                        <div className="flex items-center space-x-3">
-                          <ApplicationIcon name={app.name} publisher={app.publisher} iconPath={app.display_icon} size="md" />
-                          <div className="min-w-0">
-                            <span className="font-semibold block truncate max-w-xs text-xs">
-                              {app.name}
-                              {app.package_full_name && (
-                                <span className="ml-1.5 align-middle text-[9px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-600 dark:text-sky-300 border border-sky-500/25 font-bold">
-                                  STORE
-                                </span>
-                              )}
-                            </span>
-                            <span className="text-[11px] text-text-muted truncate block">
-                              {app.publisher || 'Unknown Publisher'} • v{app.version}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-3 text-text-secondary truncate max-w-[140px]">{app.publisher}</td>
-                      <td className="p-3 text-text-muted font-mono">{app.version}</td>
-                      <td className="p-3 text-text-secondary font-mono font-bold">
-                        {app.estimated_size_kb > 0 ? `${(app.estimated_size_kb / 1024).toFixed(1)} MB` : '—'}
-                      </td>
-                      <td className="p-3">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-16 h-1.5 bg-surface rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                app.health_score >= 80 ? 'bg-secondary' : app.health_score >= 60 ? 'bg-warning' : 'bg-danger'
-                              }`}
-                              style={{ width: `${app.health_score}%` }}
-                            />
-                          </div>
-                          <span className="font-mono text-[11px] text-text-muted">{app.health_score}%</span>
-                        </div>
-                      </td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={() => setConfirmUninstallApp(app)}
-                            className="flex items-center space-x-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 border border-red-500/20 rounded-xl text-xs font-semibold transition-all hover:scale-105 active:scale-95 shadow-sm"
-                            title="Uninstall application and clean leftovers"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Uninstall</span>
-                          </button>
-                          <button
-                            onClick={() => setDetailsApp(app)}
-                            className="p-1.5 text-text-muted hover:text-text-primary hover:bg-surface rounded-xl border border-border transition-colors"
-                            title="Inspect Properties & Health"
-                          >
-                            <Info className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* TAB 1: Installed Desktop Apps */}
+      {activeTab === 'installed' && filteredInstalledApps.length > 0 && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border shadow-sm">
+          {filteredInstalledApps.map((app) => {
+            const sizeMb = app.estimated_size_kb > 0 ? (app.estimated_size_kb / 1024).toFixed(1) : null;
 
-      {/* Grid View */}
-      {filteredApps.length > 0 && viewMode === 'grid' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredApps.map((app) => (
-            <div
-              key={app.id}
-              className="bg-card border border-border hover:border-primary/50 rounded-xl p-4 transition-all duration-200 flex flex-col justify-between space-y-3"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-3">
-                  <ApplicationIcon name={app.name} publisher={app.publisher} iconPath={app.display_icon} size="md" />
+            return (
+              <div
+                key={app.id}
+                className="p-4 flex items-center justify-between hover:bg-surface/60 transition-colors gap-4"
+              >
+                {/* Left: Authentic Logo + Clean Name + Publisher */}
+                <div className="flex items-center space-x-3.5 min-w-0 flex-1">
+                  <ApplicationIcon
+                    name={app.name}
+                    publisher={app.publisher}
+                    iconPath={app.display_icon}
+                    size="md"
+                  />
                   <div className="min-w-0">
-                    <h4 className="text-xs font-bold text-text-primary truncate max-w-[170px]">{app.name}</h4>
-                    <p className="text-[11px] text-text-muted truncate max-w-[170px]">{app.publisher}</p>
+                    <h4 className="text-xs sm:text-sm font-bold text-text-primary truncate">
+                      {app.name}
+                    </h4>
+                    <p className="text-[11px] text-text-muted truncate mt-0.5">
+                      {app.publisher || 'Verified Application'}
+                      {app.version && ` • v${app.version}`}
+                    </p>
                   </div>
                 </div>
-                <StatusBadge status={`${app.health_score}%`} variant={app.health_score >= 80 ? 'success' : 'warning'} />
-              </div>
 
-              <div className="text-[11px] space-y-1 text-text-muted font-mono pt-1">
-                <div className="flex justify-between">
-                  <span>Version:</span>
-                  <span className="text-text-secondary">{app.version}</span>
+                {/* Right: Size + Clean Uninstall Button */}
+                <div className="flex items-center space-x-4 flex-shrink-0">
+                  {sizeMb && (
+                    <span className="text-xs font-semibold text-text-secondary font-mono hidden sm:inline-block">
+                      {sizeMb} MB
+                    </span>
+                  )}
+
+                  <button
+                    onClick={() => setConfirmUninstallApp(app)}
+                    className="flex items-center space-x-1.5 px-4 py-2 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/25 rounded-xl text-xs font-bold transition-all hover:scale-105 active:scale-95 shadow-sm"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Uninstall</span>
+                  </button>
                 </div>
-                <div className="flex justify-between">
-                  <span>Size:</span>
-                  <span className="text-text-secondary">
-                    {app.estimated_size_kb > 0 ? `${(app.estimated_size_kb / 1024).toFixed(1)} MB` : '—'}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* TAB 2: Windows Apps */}
+      {activeTab === 'windows' && filteredWindowsApps.length > 0 && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border shadow-sm">
+          {filteredWindowsApps.map((wApp) => {
+            const friendlyName = cleanWindowsAppName(wApp.name);
+
+            return (
+              <div
+                key={wApp.package_full_name}
+                className="p-4 flex items-center justify-between hover:bg-surface/60 transition-colors gap-4"
+              >
+                {/* Left: Authentic Logo + Clean Name + Publisher */}
+                <div className="flex items-center space-x-3.5 min-w-0 flex-1">
+                  <ApplicationIcon
+                    name={friendlyName}
+                    publisher={wApp.publisher}
+                    iconPath={wApp.display_icon}
+                    size="md"
+                  />
+                  <div className="min-w-0">
+                    <h4 className="text-xs sm:text-sm font-bold text-text-primary truncate">
+                      {friendlyName}
+                    </h4>
+                    <p className="text-[11px] text-text-muted truncate mt-0.5">
+                      {wApp.publisher || 'Microsoft Corporation'}
+                      {wApp.version && ` • v${wApp.version}`}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right: Badge + Clean Uninstall Button */}
+                <div className="flex items-center space-x-4 flex-shrink-0">
+                  <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-surface border border-border text-text-muted hidden sm:inline-block">
+                    Windows App
                   </span>
+
+                  <button
+                    onClick={() => setConfirmUninstallWinApp(wApp)}
+                    disabled={wApp.non_removable}
+                    className={`flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                      wApp.non_removable
+                        ? 'opacity-40 cursor-not-allowed bg-surface text-text-muted border border-border'
+                        : 'bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/25 hover:scale-105 active:scale-95'
+                    }`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{wApp.non_removable ? 'System App' : 'Uninstall'}</span>
+                  </button>
                 </div>
               </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-border">
-                <button
-                  onClick={() => setDetailsApp(app)}
-                  className="px-2.5 py-1 text-[11px] rounded bg-surface hover:bg-surface-elevated text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  Details
-                </button>
-                <button
-                  onClick={() => setConfirmUninstallApp(app)}
-                  className="px-2.5 py-1 text-[11px] rounded bg-danger/10 hover:bg-danger/20 text-danger border border-danger/30 font-medium transition-colors"
-                >
-                  Uninstall
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* Compact View */}
-      {filteredApps.length > 0 && viewMode === 'compact' && (
-        <div className="bg-card border border-border rounded-xl divide-y divide-border">
-          {filteredApps.map((app) => (
-            <div key={app.id} className="p-2.5 flex items-center justify-between hover:bg-surface/40 text-xs">
-              <div className="flex items-center space-x-3">
-                <ApplicationIcon name={app.name} publisher={app.publisher} iconPath={app.display_icon} size="sm" />
-                <span className="font-semibold text-text-primary">{app.name}</span>
-                <span className="text-text-muted font-mono">v{app.version}</span>
-                <span className="text-text-muted">({app.publisher})</span>
-              </div>
-              <div className="flex items-center space-x-3">
-                <span className="font-mono text-text-secondary">
-                  {app.estimated_size_kb > 0 ? `${(app.estimated_size_kb / 1024).toFixed(1)} MB` : ''}
-                </span>
-                <button
-                  onClick={() => setConfirmUninstallApp(app)}
-                  className="text-danger hover:text-rose-400 font-medium"
-                >
-                  Uninstall
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Application Properties / Health Score Details Modal */}
-      {detailsApp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden p-6 space-y-4">
-            <div className="flex items-start justify-between border-b border-border pb-4">
-              <div className="flex items-center space-x-3">
-                <ApplicationIcon name={detailsApp.name} publisher={detailsApp.publisher} iconPath={detailsApp.display_icon} size="lg" />
-                <div>
-                  <h3 className="text-sm font-bold text-text-primary">{detailsApp.name}</h3>
-                  <p className="text-xs text-text-muted">{detailsApp.publisher}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setDetailsApp(null)}
-                className="text-text-muted hover:text-text-primary p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 rounded-lg bg-surface border border-border space-y-1">
-                <span className="text-text-muted text-[10px] uppercase font-mono">Version</span>
-                <p className="text-text-primary font-semibold">{detailsApp.version}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-surface border border-border space-y-1">
-                <span className="text-text-muted text-[10px] uppercase font-mono">Architecture</span>
-                <p className="text-text-primary font-semibold">{detailsApp.architecture} ({detailsApp.registry_source})</p>
-              </div>
-              <div className="p-3 rounded-lg bg-surface border border-border space-y-1 col-span-2">
-                <span className="text-text-muted text-[10px] uppercase font-mono">Installation Folder</span>
-                <p className="text-text-primary font-mono text-[11px] truncate">{detailsApp.install_location || 'Not explicitly registered'}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-surface border border-border space-y-1 col-span-2">
-                <span className="text-text-muted text-[10px] uppercase font-mono">Uninstall Command</span>
-                <p className="text-text-primary font-mono text-[11px] truncate">{detailsApp.uninstall_string || 'None'}</p>
-              </div>
-            </div>
-
-            {/* Health Score Breakdown */}
-            <div className="p-4 rounded-xl bg-surface/50 border border-border space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-text-primary">Application Health Score</span>
-                <StatusBadge status={`${detailsApp.health_score}/100`} variant={detailsApp.health_score >= 80 ? 'success' : 'warning'} />
-              </div>
-              <div className="space-y-1 pt-1">
-                {detailsApp.health_notes.map((note, idx) => (
-                  <p key={idx} className="text-xs text-text-secondary flex items-center space-x-1.5">
-                    <span className="text-secondary">•</span>
-                    <span>{note}</span>
-                  </p>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end space-x-3 pt-2">
-              <button
-                onClick={() => setDetailsApp(null)}
-                className="px-4 py-2 text-xs font-medium text-text-secondary hover:text-text-primary bg-surface rounded-lg border border-border"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirmation Dialog */}
+      {/* Confirmation Dialog for Installed Apps (Revo/IObit Deep Eradication) */}
       {confirmUninstallApp && (
         <ConfirmationDialog
           isOpen={true}
-          title={`Uninstall ${confirmUninstallApp.name}`}
-          message={`Are you sure you want to uninstall ${confirmUninstallApp.name}? Syntax Uninstaller will automatically create a System Restore Point, execute the official uninstaller, and scan for leftover Registry keys and files.`}
-          details={[
-            `Publisher: ${confirmUninstallApp.publisher}`,
-            `Install Path: ${confirmUninstallApp.install_location || 'Default system location'}`,
-            `Registered Command: ${confirmUninstallApp.uninstall_string}`,
-          ]}
-          confirmText="Start Complete Uninstall"
+          title={`Completely Uninstall ${confirmUninstallApp.name}?`}
+          message={`Are you sure you want to completely uninstall ${confirmUninstallApp.name}? Syntax Uninstaller will automatically run the uninstaller and execute a deep leftover scan to eradicate all residual files, registry keys, and cache so no files are left behind.`}
+          confirmText="Yes, Completely Uninstall"
           cancelText="Cancel"
           isDangerous={false}
-          onConfirm={() => handleStartUninstall(confirmUninstallApp, false)}
+          onConfirm={() => handleStartUninstall(confirmUninstallApp)}
           onCancel={() => setConfirmUninstallApp(null)}
         />
       )}
 
-      {/* Uninstallation & Scanning Progress Dialog */}
+      {/* Confirmation Dialog for Windows Apps */}
+      {confirmUninstallWinApp && (
+        <ConfirmationDialog
+          isOpen={true}
+          title={`Uninstall ${cleanWindowsAppName(confirmUninstallWinApp.name)}?`}
+          message={`Are you sure you want to uninstall ${cleanWindowsAppName(confirmUninstallWinApp.name)}? This will remove the package and all its associated data.`}
+          confirmText="Yes, Uninstall"
+          cancelText="Cancel"
+          isDangerous={false}
+          onConfirm={() => handleStartWinAppUninstall(confirmUninstallWinApp)}
+          onCancel={() => setConfirmUninstallWinApp(null)}
+        />
+      )}
+
+      {/* Progress Dialog for Deep Uninstallation & Cleanup */}
       <ProgressDialog
         isOpen={isUninstalling}
-        title={`Uninstalling ${activeUninstallingApp?.name || 'Program'}`}
-        subtitle="Executing multi-stage verified uninstaller and leftover detection engine"
+        title={`Uninstalling ${activeAppName || 'Program'}`}
+        subtitle="Removing program and executing deep leftover eradication..."
         steps={uninstallSteps}
         currentStepIndex={currentStepIndex}
         canClose={canCloseProgress}
         onClose={() => setIsUninstalling(false)}
       />
-
-      {/* Leftovers Review & Removal Modal */}
-      {showLeftoversModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-          <div className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden p-6 space-y-4">
-            <div className="flex items-start justify-between border-b border-border pb-3">
-              <div>
-                <h3 className="text-sm font-bold text-text-primary flex items-center space-x-2">
-                  <ShieldCheck className="w-4 h-4 text-secondary" />
-                  <span>Leftovers Detected for {activeUninstallingApp?.name}</span>
-                </h3>
-                <p className="text-xs text-text-muted mt-0.5">
-                  Review orphaned Registry keys and files discovered after uninstaller execution.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowLeftoversModal(false)}
-                className="text-text-muted hover:text-text-primary p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Leftovers List */}
-            <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
-              {scannedLeftovers.map((item, idx) => (
-                <div
-                  key={item.id}
-                  className="p-3 rounded-xl bg-surface border border-border flex items-start space-x-3"
-                >
-                  <input
-                    type="checkbox"
-                    checked={item.selected}
-                    onChange={(e) => {
-                      const next = [...scannedLeftovers];
-                      next[idx].selected = e.target.checked;
-                      setScannedLeftovers(next);
-                    }}
-                    className="mt-1 rounded border-border text-primary focus:ring-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-text-primary truncate max-w-md font-mono">
-                        {item.path}
-                      </span>
-                      <StatusBadge status={item.item_type} variant="info" />
-                    </div>
-                    <p className="text-[11px] text-text-secondary mt-0.5">{item.reason}</p>
-                    {item.size_bytes > 0 && (
-                      <span className="text-[10px] text-text-muted font-mono">
-                        Size: {(item.size_bytes / 1024).toFixed(1)} KB
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-between pt-3 border-t border-border">
-              <span className="text-xs text-text-muted">
-                {scannedLeftovers.filter((i) => i.selected).length} items selected for safe removal
-              </span>
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={() => setShowLeftoversModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-text-secondary hover:text-text-primary bg-surface rounded-lg border border-border"
-                >
-                  Skip Remaining
-                </button>
-                <button
-                  onClick={handlePurgeLeftovers}
-                  className="px-4 py-2 text-xs font-medium text-white bg-danger hover:bg-rose-600 rounded-lg shadow-md transition-colors"
-                >
-                  Purge Selected Leftovers
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

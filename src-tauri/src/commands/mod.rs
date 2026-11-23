@@ -139,6 +139,20 @@ pub async fn get_startup_items() -> Vec<StartupItem> {
 }
 
 #[tauri::command]
+pub async fn toggle_startup_item(id: String, enabled: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || startup::toggle_startup_entry(&id, enabled))
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?
+}
+
+#[tauri::command]
+pub async fn get_last_bios_time() -> f64 {
+    tauri::async_runtime::spawn_blocking(startup::get_last_bios_time)
+        .await
+        .unwrap_or(12.0)
+}
+
+#[tauri::command]
 pub async fn get_services() -> Vec<WinService> {
     tauri::async_runtime::spawn_blocking(services::get_windows_services)
         .await
@@ -393,7 +407,7 @@ pub async fn get_context_menu_items() -> Vec<ContextMenuItem> {
 }
 
 #[tauri::command]
-pub async fn toggle_context_menu_item(registry_path: String, enable: bool) -> Result<(), String> {
+pub async fn toggle_context_menu_item(registry_path: String, enable: bool) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         context_menu::toggle_context_menu_item(&registry_path, enable)
     })
@@ -490,4 +504,139 @@ pub async fn analyze_disk_space(
     })
     .await
     .map_err(|e| format!("Background task failed: {}", e))?
+}
+
+// Window management commands for frameless custom titlebar
+#[tauri::command]
+pub fn window_minimize(window: tauri::Window) {
+    let _ = window.minimize();
+}
+
+#[tauri::command]
+pub fn window_toggle_maximize(window: tauri::Window) {
+    if let Ok(is_max) = window.is_maximized() {
+        if is_max {
+            let _ = window.unmaximize();
+        } else {
+            let _ = window.maximize();
+        }
+    }
+}
+
+#[tauri::command]
+pub fn window_close(window: tauri::Window) {
+    let _ = window.close();
+}
+
+#[tauri::command]
+pub fn window_is_maximized(window: tauri::Window) -> bool {
+    window.is_maximized().unwrap_or(false)
+}
+
+#[tauri::command]
+pub async fn download_and_install_update(
+    app: tauri::AppHandle,
+    download_url: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let temp_dir = std::env::temp_dir();
+        let installer_path = temp_dir.join("Syntax-Uninstaller-Setup.exe");
+        let installer_str = installer_path.to_string_lossy().to_string();
+
+        let _ = app.emit(
+            "app-update-progress",
+            serde_json::json!({
+                "percent": 15,
+                "status": "Connecting to update server..."
+            }),
+        );
+
+        let _ = std::fs::remove_file(&installer_path);
+
+        let _ = app.emit(
+            "app-update-progress",
+            serde_json::json!({
+                "percent": 35,
+                "status": "Downloading update package..."
+            }),
+        );
+
+        // First attempt with built-in curl.exe
+        let curl_res = std::process::Command::new("curl.exe")
+            .args(["-L", "-f", "-s", "-o", &installer_str, &download_url])
+            .output();
+
+        let mut success = match curl_res {
+            Ok(out) => {
+                out.status.success()
+                    && installer_path.exists()
+                    && std::fs::metadata(&installer_path)
+                        .map(|m| m.len() > 1024)
+                        .unwrap_or(false)
+            }
+            Err(_) => false,
+        };
+
+        if !success {
+            // Fallback: PowerShell WebClient
+            let ps_script = format!(
+                r#"$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('{0}', '{1}')"#,
+                download_url, installer_str
+            );
+            let ps_res = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &ps_script])
+                .status();
+
+            success = match ps_res {
+                Ok(s) => {
+                    s.success()
+                        && installer_path.exists()
+                        && std::fs::metadata(&installer_path)
+                            .map(|m| m.len() > 1024)
+                            .unwrap_or(false)
+                }
+                Err(_) => false,
+            };
+        }
+
+        if !success {
+            return Err("Failed to download the update installer. Please check your internet connection.".to_string());
+        }
+
+        let _ = app.emit(
+            "app-update-progress",
+            serde_json::json!({
+                "percent": 85,
+                "status": "Launching updated installer..."
+            }),
+        );
+
+        // Execute the installer
+        let spawn_res = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                &format!("Start-Process -FilePath '{}'", installer_str),
+            ])
+            .spawn();
+
+        if let Err(e) = spawn_res {
+            return Err(format!("Downloaded update but failed to launch installer: {}", e));
+        }
+
+        let _ = app.emit(
+            "app-update-progress",
+            serde_json::json!({
+                "percent": 100,
+                "status": "Update launched! Restarting..."
+            }),
+        );
+
+        std::thread::sleep(std::time::Duration::from_millis(800));
+        std::process::exit(0);
+    })
+    .await
+    .map_err(|e| format!("Update error: {}", e))?
 }

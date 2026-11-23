@@ -270,17 +270,47 @@ fn powershell_services() -> Vec<WinService> {
 }
 
 pub fn manage_service(service_name: &str, action: &str) -> Result<(), String> {
-    let verb = match action {
-        "start" => "Start-Service",
-        "stop" => "Stop-Service -Force",
-        "restart" => "Restart-Service -Force",
+    let script = match action {
+        "start" => format!("Start-Service -Name {} -ErrorAction Stop", winproc::ps_string(service_name)),
+        "stop" => format!("Stop-Service -Name {} -Force -ErrorAction SilentlyContinue", winproc::ps_string(service_name)),
+        "restart" => format!("Restart-Service -Name {} -Force", winproc::ps_string(service_name)),
+        "disable" => format!(
+            "Set-Service -Name {0} -StartupType Disabled -ErrorAction Stop; Stop-Service -Name {0} -Force -ErrorAction SilentlyContinue",
+            winproc::ps_string(service_name)
+        ),
+        "manual" => format!(
+            "Set-Service -Name {} -StartupType Manual -ErrorAction Stop",
+            winproc::ps_string(service_name)
+        ),
+        "automatic" => format!(
+            "Set-Service -Name {} -StartupType Automatic -ErrorAction Stop",
+            winproc::ps_string(service_name)
+        ),
         _ => return Err(format!("Invalid service action: {}", action)),
     };
 
-    // ps_string escapes quotes, so a crafted service name cannot inject code.
-    let script = format!("{} -Name {}", verb, winproc::ps_string(service_name));
+    if crate::modules::system_info::is_elevated() {
+        winproc::powershell(&script, Duration::from_secs(45))?;
+    } else {
+        // Attempt elevated execution via UAC escalation
+        let escaped = script.replace('"', "\\\"");
+        let cmd = format!(
+            "Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile -Command \"{}\"'",
+            escaped
+        );
+        let mut command = std::process::Command::new("powershell");
+        command.args(&["-NoProfile", "-WindowStyle", "Hidden", "-Command", &cmd]);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        let status = command.status().map_err(|e| e.to_string())?;
+        if !status.success() {
+            return Err("Administrator privileges required to manage Windows services. Please run Syntax Uninstaller as Administrator.".to_string());
+        }
+    }
 
-    winproc::powershell(&script, Duration::from_secs(45))?;
     invalidate("services:");
     Ok(())
 }

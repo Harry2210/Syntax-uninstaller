@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CleanCategory } from '../types';
 import { api } from '../services/api';
 import { Sparkles, RefreshCw, Trash2, ShieldCheck, History } from 'lucide-react';
@@ -13,38 +13,28 @@ export const WindowsCleanerPage: React.FC<WindowsCleanerPageProps> = ({
   onRefresh,
   onLogNotification,
 }) => {
-  const [categories, setCategories] = useState<CleanCategory[]>([
-    {
-      id: 'win_recent',
-      name: 'Recent Document History',
-      description: 'Shortcuts and links to recently opened files in Windows Explorer',
-      target_paths: ['C:\\Users\\User\\AppData\\Roaming\\Microsoft\\Windows\\Recent'],
-      file_count: 140,
-      total_size_bytes: 12500000,
-      selected: true,
-    },
-    {
-      id: 'win_thumbs',
-      name: 'Explorer Thumbnail Cache',
-      description: 'Cached picture and media thumbnails in File Explorer',
-      target_paths: ['C:\\Users\\User\\AppData\\Local\\Microsoft\\Windows\\Explorer'],
-      file_count: 12,
-      total_size_bytes: 185000000,
-      selected: false,
-    },
-    {
-      id: 'win_run_mru',
-      name: 'Explorer Run & Search MRU',
-      description: 'History of commands executed via the Windows Run dialog (Win+R)',
-      target_paths: [],
-      file_count: 18,
-      total_size_bytes: 2048,
-      selected: true,
-    },
-  ]);
-
+  const [categories, setCategories] = useState<CleanCategory[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  const loadTraces = async () => {
+    setIsLoading(true);
+    try {
+      const items = await api.scanWindowsTraces();
+      if (items && items.length > 0) {
+        setCategories(items.map((i) => ({ ...i, selected: true })));
+      }
+    } catch (err) {
+      console.error('Failed to scan windows traces:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTraces();
+  }, []);
 
   const toggleCategory = (id: string) => {
     setCategories((prev) =>
@@ -89,14 +79,25 @@ export const WindowsCleanerPage: React.FC<WindowsCleanerPageProps> = ({
           </div>
         </div>
 
-        <button
-          disabled={selectedCount === 0 || isCleaning}
-          onClick={() => setShowConfirm(true)}
-          className="flex items-center space-x-2 px-5 py-2.5 bg-primary hover:bg-primary-hover disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20 transition-all"
-        >
-          <Trash2 className="w-4 h-4" />
-          <span>Wipe Windows Traces</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={loadTraces}
+            disabled={isLoading || isCleaning}
+            className="flex items-center space-x-1.5 px-3.5 py-2.5 bg-background border border-border hover:bg-card text-text-primary rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+            title="Rescan traces"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>Scan</span>
+          </button>
+          <button
+            disabled={selectedCount === 0 || isCleaning || isLoading}
+            onClick={() => setShowConfirm(true)}
+            className="flex items-center space-x-2 px-5 py-2.5 bg-primary hover:bg-primary-hover disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20 transition-all"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Wipe Windows Traces</span>
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

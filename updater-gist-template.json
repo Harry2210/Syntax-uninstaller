@@ -1,0 +1,13 @@
+{
+  "version": "1.2.0",
+  "name": "Syntax Uninstaller v1.2.0",
+  "release_date": "2026-11-23",
+  "download_url": "https://github.com/your-username/syntax-uninstaller/releases/latest",
+  "changelog": [
+    "Automatic update notification system via GitHub Gist manifest",
+    "Streamlined About view and startup apps filter",
+    "Enhanced Windows Debloatware services disconnect with elevation",
+    "Live scanning for Windows, Browser, and Office traces"
+  ],
+  "mandatory": false
+}

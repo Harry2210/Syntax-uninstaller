@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Build and test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Type-check and build frontend
+        run: npm run build
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+        working-directory: src-tauri
+
+      - name: Compile all targets
+        run: cargo check --all-targets
+        working-directory: src-tauri
+
+      - name: Clippy (correctness and suspicious lints are errors)
+        run: cargo clippy --all-targets -- -D clippy::correctness -D clippy::suspicious
+        working-directory: src-tauri
+
+      - name: Run Rust tests
+        run: cargo test
+        working-directory: src-tauri
+
+      - name: Run JavaScript core tests
+        run: node tests/test_uninstaller_core.js

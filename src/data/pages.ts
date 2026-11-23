@@ -125,9 +125,9 @@ export const PAGE_META: Record<PageId, PageMeta> = {
     keywords: ['privacy', 'recent files', 'history', 'thumbnails', 'traces'],
   },
   'privacy-debloater': {
-    title: 'Windows Privacy Shield',
-    subtitle: 'Silence background diagnostic tracking, Copilot indexing, and search telemetry',
-    keywords: ['privacy', 'telemetry', 'tracking', 'debloat', 'copilot', 'recall', 'ads'],
+    title: 'Windows Debloatware',
+    subtitle: 'Disconnect unwanted background services, silence telemetry, and block AI bloat',
+    keywords: ['debloat', 'debloatware', 'privacy', 'telemetry', 'services', 'tracking', 'copilot', 'recall', 'ads', 'wersvc', 'xbox'],
   },
   'browser-cleaner': {
     title: 'Browser Data Cleaner',

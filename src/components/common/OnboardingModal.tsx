@@ -16,7 +16,6 @@ import {
 interface OnboardingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onOpenHelp: () => void;
 }
 
 interface Slide {
@@ -27,10 +26,9 @@ interface Slide {
 }
 
 /**
- * First-run walkthrough. Stored in localStorage so it appears exactly once, and
- * can be re-opened any time from Help & Guide.
+ * First-run walkthrough. Stored in localStorage so it appears exactly once.
  */
-export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClose, onOpenHelp }) => {
+export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClose }) => {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -75,7 +73,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
           <div className="p-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5">
             <p className="text-emerald-400 font-bold text-xs mb-1">Everyday care</p>
             <p className="text-[11px]">
-              Smart Care, Uninstall Apps, Clean Junk Files, Speed Up PC, Update Software and Privacy Shield — each
+              Smart Care, Uninstall Apps, Clean Junk Files, Speed Up PC, Update Software and Debloatware — each
               labelled with what it actually does.
             </p>
           </div>
@@ -230,16 +228,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
               </div>
 
               <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => {
-                    onClose();
-                    onOpenHelp();
-                  }}
-                  className="text-[11px] text-text-muted hover:text-text-primary px-2 py-1.5 rounded-lg transition-colors"
-                >
-                  Read the guide
-                </button>
-
                 {index > 0 && (
                   <button
                     onClick={() => setIndex((i) => i - 1)}

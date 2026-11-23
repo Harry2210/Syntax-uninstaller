@@ -4,6 +4,7 @@ pub mod modules;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
+use tauri::Manager;
 
 /// Logs go next to the SQLite database in %LOCALAPPDATA%\SyntaxUninstaller.
 /// They used to be written to the current working directory, which is often
@@ -50,11 +51,21 @@ pub fn run() {
 
     log_line("app.log", "Syntax Uninstaller starting");
 
-    tauri::Builder::default()
-        .setup(|_app| {
+    let app = match tauri::Builder::default()
+        .setup(|app| {
+            log_line("app.log", "Entered setup hook");
             // Initialize SQLite DB
+            log_line("app.log", "Calling Database::init");
             if let Err(e) = modules::db::Database::init() {
                 log_line("app.log", &format!("Database initialization error: {}", e));
+            }
+            log_line("app.log", "Database::init finished, getting main window");
+            if let Some(window) = app.get_webview_window("main") {
+                log_line("app.log", "Found main window, showing");
+                let _ = window.show();
+                let _ = window.set_focus();
+            } else {
+                log_line("app.log", "Main window not found in setup");
             }
             log_line("app.log", "Setup finished successfully");
             Ok(())
@@ -70,6 +81,8 @@ pub fn run() {
             commands::scan_leftovers,
             commands::remove_leftovers,
             commands::get_startup_items,
+            commands::toggle_startup_item,
+            commands::get_last_bios_time,
             commands::get_services,
             commands::manage_service,
             commands::get_scheduled_tasks,
@@ -110,10 +123,21 @@ pub fn run() {
             commands::generate_audit_html,
             commands::export_audit_report,
             commands::analyze_disk_space,
+            commands::window_minimize,
+            commands::window_toggle_maximize,
+            commands::window_close,
+            commands::window_is_maximized,
+            commands::download_and_install_update,
         ])
-        .build(tauri::generate_context!())
-        .expect("error while building Syntax Uninstaller")
-        .run(|_app_handle, event| {
+        .build(tauri::generate_context!()) {
+            Ok(app) => app,
+            Err(e) => {
+                log_line("app.log", &format!("Builder build error: {:?}", e));
+                return;
+            }
+        };
+
+    app.run(|_app_handle, event| {
             // Previously EVERY runtime event (including hundreds of
             // MainEventsCleared per minute) opened, wrote and flushed a file.
             // That was pure disk churn; log only meaningful lifecycle events.

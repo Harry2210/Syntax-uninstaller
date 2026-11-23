@@ -24,7 +24,7 @@
         "resizable": true,
         "fullscreen": false,
         "center": true,
-        "decorations": true,
+        "decorations": false,
         "theme": "Dark",
         "backgroundColor": "#0B0F19"
       }
@@ -35,7 +35,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

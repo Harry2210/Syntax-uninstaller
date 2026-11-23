@@ -1,5 +1,16 @@
 import React from 'react';
-import { Settings, Shield, Palette, Layers, Info, RotateCcw, Sun, Moon, Monitor, CheckCircle2 } from 'lucide-react';
+import {
+  Settings,
+  Shield,
+  Palette,
+  Layers,
+  Info,
+  RotateCcw,
+  Sun,
+  Moon,
+  Monitor,
+  CheckCircle2,
+} from 'lucide-react';
 import { AppSettings, DEFAULT_SETTINGS, ScanLevel, ThemeMode } from '../services/preferences';
 
 interface SettingsPageProps {
@@ -14,7 +25,11 @@ const THEME_OPTIONS: { id: ThemeMode; label: string; hint: string; icon: React.R
   { id: 'system', label: 'Match Windows', hint: 'Follows your PC setting', icon: <Monitor className="w-4 h-4" /> },
 ];
 
-export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onChange, onLogNotification }) => {
+export const SettingsPage: React.FC<SettingsPageProps> = ({
+  settings,
+  onChange,
+  onLogNotification,
+}) => {
   const handleReset = () => {
     onChange({ ...DEFAULT_SETTINGS });
     onLogNotification('Settings Restored', 'All preferences were reset to their default values.', 'info');

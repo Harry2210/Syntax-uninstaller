@@ -43,35 +43,41 @@ export const QuickUninstallPage: React.FC<QuickUninstallPageProps> = ({
     setSteps(initialSteps);
     setStepIdx(0);
 
-    // Step 1: Silent flag prep
-    await new Promise((r) => setTimeout(r, 600));
-    setSteps((prev) =>
-      prev.map((s, idx) => (idx === 0 ? { ...s, state: 'completed' } : idx === 1 ? { ...s, state: 'in-progress' } : s))
-    );
-    setStepIdx(1);
+    try {
+      // Step 1: Silent flag prep
+      await new Promise((r) => setTimeout(r, 600));
+      setSteps((prev) =>
+        prev.map((s, idx) => (idx === 0 ? { ...s, state: 'completed' } : idx === 1 ? { ...s, state: 'in-progress' } : s))
+      );
+      setStepIdx(1);
 
-    // Step 2: Run quiet uninstaller
-    const cmd = app.quiet_uninstall_string || app.uninstall_string;
-    await api.runUninstaller(cmd, true);
-    setSteps((prev) =>
-      prev.map((s, idx) => (idx === 1 ? { ...s, state: 'completed' } : idx === 2 ? { ...s, state: 'in-progress' } : s))
-    );
-    setStepIdx(2);
+      // Step 2: Run quiet uninstaller
+      const cmd = app.quiet_uninstall_string || app.uninstall_string;
+      await api.runUninstaller(cmd, true);
+      setSteps((prev) =>
+        prev.map((s, idx) => (idx === 1 ? { ...s, state: 'completed' } : idx === 2 ? { ...s, state: 'in-progress' } : s))
+      );
+      setStepIdx(2);
 
-    // Step 3: Auto leftover sweep
-    const leftovers = await api.scanLeftovers(app.name, app.publisher, app.install_location, 'Safe');
-    const [count, bytes] = await api.removeLeftovers(leftovers);
-    setSteps((prev) =>
-      prev.map((s, idx) => (idx === 2 ? { ...s, state: 'completed' } : s))
-    );
-    setCanClose(true);
+      // Step 3: Auto leftover sweep
+      const leftovers = await api.scanLeftovers(app.name, app.publisher, app.install_location, 'Safe');
+      const [count, bytes] = await api.removeLeftovers(leftovers);
+      setSteps((prev) =>
+        prev.map((s, idx) => (idx === 2 ? { ...s, state: 'completed' } : s))
+      );
 
-    onLogNotification(
-      'Quick Uninstall Finished',
-      `Quietly removed ${app.name} and purged ${count} leftover traces (${(bytes / 1024).toFixed(0)} KB freed).`,
-      'success'
-    );
-    onRefresh();
+      onLogNotification(
+        'Quick Uninstall Finished',
+        `Quietly removed ${app.name} and purged ${count} leftover traces (${(bytes / 1024).toFixed(0)} KB freed).`,
+        'success'
+      );
+      onRefresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      onLogNotification('Quick Uninstall Error', `Failed to remove ${app.name}: ${msg}`, 'error');
+    } finally {
+      setCanClose(true);
+    }
   };
 
   return (

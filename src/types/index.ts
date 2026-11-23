@@ -93,6 +93,9 @@ export interface StartupItem {
   user_scope: string;
   enabled: boolean;
   file_exists: boolean;
+  publisher?: string;
+  impact?: string;
+  item_type?: string;
 }
 
 export interface WinService {
@@ -204,6 +207,8 @@ export interface DebloatItem {
   description: string;
   is_shielded: boolean;
   recommended: boolean;
+  service_name?: string;
+  impact?: 'Safe' | 'Optional' | 'Advanced';
 }
 
 export interface SoftwareUpdate {
