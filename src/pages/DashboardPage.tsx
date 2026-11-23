@@ -78,7 +78,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 }) => {
   const [isSmartCleaning, setIsSmartCleaning] = useState(false);
   const [smartCleanCompleted, setSmartCleanCompleted] = useState(false);
-  const [smartCleanResults, setSmartCleanResults] = useState<{ bytesFreed: number; shieldsApplied: number } | null>(null);
+  const [smartCleanResults, setSmartCleanResults] = useState<{ bytesFreed: number } | null>(null);
   const [showCleanModal, setShowCleanModal] = useState(false);
   const [cleanPhase, setCleanPhase] = useState<'scanning' | 'analyzing' | 'purging' | 'optimizing' | 'completed'>('scanning');
   const [cleanProgress, setCleanProgress] = useState(0);
@@ -139,10 +139,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       const [count, bytes] = await api.cleanFiles(pathsToClean);
       await new Promise((r) => setTimeout(r, 800));
 
-      // Phase 4: Enabling privacy debloat protections
+      // Phase 4: Optimizing storage & finalizing
       setCleanPhase('optimizing');
       setCleanProgress(92);
-      const shieldsCount = await api.applyRecommendedDebloat();
       await new Promise((r) => setTimeout(r, 650));
 
       // Phase 5: Finalizing
@@ -151,14 +150,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       setSmartCleanResults({
         bytesFreed: bytes > 0 ? bytes : totalJunkBytes,
-        shieldsApplied: shieldsCount,
       });
       setSmartCleanCompleted(true);
 
       if (onLogNotification) {
         onLogNotification(
           'Smart Clean Complete',
-          `Successfully recovered ${((bytes > 0 ? bytes : totalJunkBytes) / (1024 * 1024)).toFixed(0)} MB disk space and optimized PC settings!`,
+          `Successfully recovered ${((bytes > 0 ? bytes : totalJunkBytes) / (1024 * 1024)).toFixed(0)} MB disk space!`,
           'success'
         );
       }
@@ -579,14 +577,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 {cleanPhase === 'scanning' && 'Scanning System Cache & Temporary Files...'}
                 {cleanPhase === 'analyzing' && 'Analyzing Orphaned Installers & Crash Dumps...'}
                 {cleanPhase === 'purging' && 'Safely Purging Junk Files & Reclaiming Storage...'}
-                {cleanPhase === 'optimizing' && 'Tuning Windows Privacy & Optimizing Boot Hooks...'}
-                {cleanPhase === 'completed' && 'Smart Clean & Optimization Complete!'}
+                {cleanPhase === 'optimizing' && 'Optimizing Storage & Validating Disk State...'}
+                {cleanPhase === 'completed' && 'Smart Clean Complete!'}
               </h3>
 
               <p className="text-xs text-slate-400 max-w-sm leading-relaxed">
                 {cleanPhase !== 'completed'
-                  ? 'Please wait while Syntax Uninstaller thoroughly optimizes your computer...'
-                  : `Successfully recovered ${((smartCleanResults?.bytesFreed || totalJunkBytes || 480 * 1024 * 1024) / (1024 * 1024)).toFixed(0)} MB of disk space and optimized Windows performance.`}
+                  ? 'Please wait while Syntax Uninstaller cleans temporary junk and frees disk space...'
+                  : `Successfully recovered ${((smartCleanResults?.bytesFreed || totalJunkBytes || 480 * 1024 * 1024) / (1024 * 1024)).toFixed(0)} MB of disk space and optimized storage.`}
               </p>
             </div>
 
@@ -623,7 +621,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </div>
               <div className="flex items-center space-x-2">
                 <span className={cleanProgress >= 100 ? 'text-emerald-400 font-bold' : 'text-slate-500'}>
-                  {cleanProgress >= 100 ? '✓' : '○'} Debloatware Active
+                  {cleanProgress >= 100 ? '✓' : '○'} Disk Cache Optimized
                 </span>
               </div>
             </div>
