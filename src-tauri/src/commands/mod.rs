@@ -625,10 +625,15 @@ pub async fn download_and_install_update(
             }),
         );
 
+        #[cfg(windows)]
+        use std::os::windows::process::CommandExt;
+
         // First attempt with built-in curl.exe
-        let curl_res = std::process::Command::new("curl.exe")
-            .args(["-L", "-f", "-s", "-o", &installer_str, &download_url])
-            .output();
+        let mut curl_cmd = std::process::Command::new("curl.exe");
+        curl_cmd.args(["-L", "-f", "-s", "-o", &installer_str, &download_url]);
+        #[cfg(windows)]
+        curl_cmd.creation_flags(0x0800_0000);
+        let curl_res = curl_cmd.output();
 
         let mut success = match curl_res {
             Ok(out) => {
@@ -647,9 +652,11 @@ pub async fn download_and_install_update(
                 r#"$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('{0}', '{1}')"#,
                 download_url, installer_str
             );
-            let ps_res = std::process::Command::new("powershell")
-                .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &ps_script])
-                .status();
+            let mut ps_cmd = std::process::Command::new("powershell");
+            ps_cmd.args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &ps_script]);
+            #[cfg(windows)]
+            ps_cmd.creation_flags(0x0800_0000);
+            let ps_res = ps_cmd.status();
 
             success = match ps_res {
                 Ok(s) => {
@@ -676,15 +683,17 @@ pub async fn download_and_install_update(
         );
 
         // Execute the installer
-        let spawn_res = std::process::Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                &format!("Start-Process -FilePath '{}'", installer_str),
-            ])
-            .spawn();
+        let mut spawn_cmd = std::process::Command::new("powershell");
+        spawn_cmd.args([
+            "-NoProfile",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &format!("Start-Process -FilePath '{}'", installer_str),
+        ]);
+        #[cfg(windows)]
+        spawn_cmd.creation_flags(0x0800_0000);
+        let spawn_res = spawn_cmd.spawn();
 
         if let Err(e) = spawn_res {
             return Err(format!("Downloaded update but failed to launch installer: {}", e));

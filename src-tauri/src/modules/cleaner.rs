@@ -353,23 +353,7 @@ pub fn clean_files(file_paths: &[String]) -> (usize, u64, Vec<String>) {
                     bytes += size;
                 }
                 Err(err) => {
-                    // If access denied on Windows system directories, try best-effort cmd deletion
-                    let path_low = p_str.to_lowercase();
-                    if err.kind() == std::io::ErrorKind::PermissionDenied
-                        && (path_low.contains("windows\\temp")
-                            || path_low.contains("softwaredistribution"))
-                    {
-                        let cmd_del = std::process::Command::new("cmd")
-                            .args(["/c", "del", "/f", "/q", "/a", p_str])
-                            .output();
-                        if let Ok(out) = cmd_del {
-                            if out.status.success() && !p.exists() {
-                                cleaned += 1;
-                                bytes += size;
-                                continue;
-                            }
-                        }
-                    }
+                    // Stash permission or locked-file error quietly — never spawn external cmd or terminal processes!
                     errors.push(format!("Cannot remove '{}': {}", p_str, err));
                 }
             }
