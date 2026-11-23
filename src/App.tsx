@@ -252,7 +252,7 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  /** Slower scans (PowerShell / disk walks) are deferred until the UI is idle. */
+  /** Slower scans (PowerShell / registry) are deferred until the UI is idle. */
   const loadBackgroundData = useCallback(async () => {
     const results = await Promise.allSettled([
       api.getWindowsApps(),
@@ -260,7 +260,6 @@ export const App: React.FC = () => {
       api.getServices(),
       api.getScheduledTasks(),
       api.getBrowserExtensions(),
-      api.scanJunkFiles(),
     ]);
 
     if (results[0].status === 'fulfilled') setWindowsApps(results[0].value);
@@ -268,7 +267,6 @@ export const App: React.FC = () => {
     if (results[2].status === 'fulfilled') setServices(results[2].value);
     if (results[3].status === 'fulfilled') setScheduledTasks(results[3].value);
     if (results[4].status === 'fulfilled') setExtensions(results[4].value);
-    if (results[5].status === 'fulfilled') setJunkCategories(results[5].value);
   }, []);
 
   const loadAllData = useCallback(async () => {

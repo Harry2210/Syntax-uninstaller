@@ -108,7 +108,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     ? Math.round(primaryDisk.total_space_bytes / (1024 ** 3))
     : 477;
 
-  const cleanableMb = totalJunkBytes > 0 ? Math.round(totalJunkBytes / (1024 * 1024)) : 10;
+  const cleanableMb = totalJunkBytes > 0 ? Math.round(totalJunkBytes / (1024 * 1024)) : 0;
 
   // Beginner-friendly 1-Click Smart Clean with realistic multi-step processing
   const handleSmartClean = async () => {
@@ -119,6 +119,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
     try {
       // Phase 1: Scanning temporary system files & cache
+      let pathsToClean = junkCategories.flatMap((c) => c.target_paths);
+      if (pathsToClean.length === 0) {
+        try {
+          const fresh = await api.scanJunkFiles();
+          pathsToClean = fresh.flatMap((c) => c.target_paths);
+        } catch {}
+      }
       await new Promise((r) => setTimeout(r, 750));
       setCleanPhase('analyzing');
       setCleanProgress(45);
@@ -129,8 +136,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       setCleanProgress(72);
 
       // Phase 3: Purging junk files
-      const allPaths = junkCategories.flatMap((c) => c.target_paths);
-      const [count, bytes] = await api.cleanFiles(allPaths);
+      const [count, bytes] = await api.cleanFiles(pathsToClean);
       await new Promise((r) => setTimeout(r, 800));
 
       // Phase 4: Enabling privacy debloat protections
@@ -326,7 +332,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <Trash2 className="w-5 h-5" />
             </div>
             <span className="px-3 py-1 rounded-full bg-white/[0.04] border border-white/10 text-xs text-cyan-300 font-medium">
-              {cleanableMb} MB Junk
+              {cleanableMb > 0 ? `${cleanableMb} MB Junk` : 'Ready to Clean'}
             </span>
           </div>
 

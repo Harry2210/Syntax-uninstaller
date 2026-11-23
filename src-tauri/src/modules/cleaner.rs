@@ -101,7 +101,7 @@ pub fn scan_junk_categories() -> Vec<CleanCategory> {
             "User Temporary Files",
             "Temporary application scratch data, installers, and transient caches",
             PathBuf::from(temp),
-            250,
+            2000,
             true,
         ));
     }
@@ -114,7 +114,7 @@ pub fn scan_junk_categories() -> Vec<CleanCategory> {
             "System Temporary Files",
             "Operating system installers, updates, and system-level scratch files",
             win_temp.to_path_buf(),
-            250,
+            1000,
             true,
         ));
     }
@@ -128,7 +128,7 @@ pub fn scan_junk_categories() -> Vec<CleanCategory> {
                 "Application Crash Dumps",
                 "Memory core dumps (.dmp) left behind by crashed processes",
                 dumps,
-                100,
+                500,
                 true,
             ));
         }
@@ -143,7 +143,7 @@ pub fn scan_junk_categories() -> Vec<CleanCategory> {
                 "Windows Error Reports",
                 "Archived telemetry, fault queues, and diagnostic crash logs",
                 wer,
-                100,
+                500,
                 true,
             ));
         }
@@ -157,7 +157,7 @@ pub fn scan_junk_categories() -> Vec<CleanCategory> {
             "Windows Update Download Cache",
             "Downloaded cumulative update packages and staged installation files",
             deliv_opt.to_path_buf(),
-            150,
+            1000,
             true,
         ));
     }
@@ -170,7 +170,7 @@ pub fn scan_junk_categories() -> Vec<CleanCategory> {
             "Windows Prefetch Cache",
             "Old application prefetch traces and stale execution metadata",
             prefetch.to_path_buf(),
-            150,
+            1000,
             false,
         ));
     }
@@ -318,6 +318,7 @@ pub fn scan_office_traces() -> Vec<CleanCategory> {
     scan_specs_parallel(specs)
 }
 
+#[allow(clippy::permissions_set_readonly_false)]
 pub fn clean_files(file_paths: &[String]) -> (usize, u64, Vec<String>) {
     let mut cleaned = 0;
     let mut bytes = 0;
@@ -325,17 +326,51 @@ pub fn clean_files(file_paths: &[String]) -> (usize, u64, Vec<String>) {
 
     for p_str in file_paths {
         let p = Path::new(p_str);
-        if p.is_file() {
+        if p.exists() {
+            let size = p.metadata().map(|m| m.len()).unwrap_or(0);
+
+            // 1. Remove readonly attribute if present
             if let Ok(meta) = p.metadata() {
-                let size = meta.len();
-                match fs::remove_file(p) {
-                    Ok(_) => {
-                        cleaned += 1;
-                        bytes += size;
+                let mut perms = meta.permissions();
+                if perms.readonly() {
+                    perms.set_readonly(false);
+                    let _ = fs::set_permissions(p, perms);
+                }
+            }
+
+            // 2. Try standard deletion
+            let remove_res = if p.is_file() {
+                fs::remove_file(p)
+            } else if p.is_dir() {
+                fs::remove_dir_all(p)
+            } else {
+                continue;
+            };
+
+            match remove_res {
+                Ok(_) => {
+                    cleaned += 1;
+                    bytes += size;
+                }
+                Err(err) => {
+                    // If access denied on Windows system directories, try best-effort cmd deletion
+                    let path_low = p_str.to_lowercase();
+                    if err.kind() == std::io::ErrorKind::PermissionDenied
+                        && (path_low.contains("windows\\temp")
+                            || path_low.contains("softwaredistribution"))
+                    {
+                        let cmd_del = std::process::Command::new("cmd")
+                            .args(["/c", "del", "/f", "/q", "/a", p_str])
+                            .output();
+                        if let Ok(out) = cmd_del {
+                            if out.status.success() && !p.exists() {
+                                cleaned += 1;
+                                bytes += size;
+                                continue;
+                            }
+                        }
                     }
-                    Err(e) => {
-                        errors.push(format!("Cannot remove file '{}': {}", p_str, e));
-                    }
+                    errors.push(format!("Cannot remove '{}': {}", p_str, err));
                 }
             }
         }
@@ -411,8 +446,9 @@ fn scan_directory_files(dir: &Path, max_files: usize) -> (usize, u64, Vec<String
         return (0, 0, paths);
     }
 
+    let max_scan_entries = 10000;
     for entry in walkdir::WalkDir::new(dir)
-        .max_depth(3)
+        .max_depth(4)
         .into_iter()
         .filter_map(|e| e.ok())
     {
@@ -420,11 +456,13 @@ fn scan_directory_files(dir: &Path, max_files: usize) -> (usize, u64, Vec<String
             if let Ok(meta) = entry.metadata() {
                 count += 1;
                 total_size += meta.len();
-                paths.push(entry.path().to_string_lossy().to_string());
-                if paths.len() >= max_files {
-                    break;
+                if paths.len() < max_files {
+                    paths.push(entry.path().to_string_lossy().to_string());
                 }
             }
+        }
+        if count >= max_scan_entries {
+            break;
         }
     }
 
